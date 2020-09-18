@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>fhem-rainbird</name>
+	<comment></comment>
+	<projects>
+	</projects>
+	<buildSpec>
+		<buildCommand>
+			<name>org.epic.perleditor.perlbuilder</name>
+			<arguments>
+			</arguments>
+		</buildCommand>
+	</buildSpec>
+	<natures>
+		<nature>org.epic.perleditor.perlnature</nature>
+	</natures>
+	<linkedResources>
+		<link>
+			<name>FHEM/73_RainbirdController.pm</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/fhem-mirror/fhem/FHEM/73_RainbirdController.pm</locationURI>
+		</link>
+		<link>
+			<name>FHEM/74_RainbirdZone.pm</name>
+			<type>1</type>
+			<locationURI>PARENT-1-PROJECT_LOC/fhem-mirror/fhem/FHEM/74_RainbirdZone.pm</locationURI>
+		</link>
+	</linkedResources>
+</projectDescription>
