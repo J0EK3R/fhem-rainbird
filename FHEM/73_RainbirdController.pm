@@ -212,12 +212,13 @@ sub RainbirdController_Define($$)
 
   my @a = split( '[ \t][ \t]*', $def );
 
-  return 'too few parameters: define <NAME> RainbirdController' if ( @a != 3 );
+  return 'too few parameters: define <NAME> RainbirdController' if ( @a < 3 );
+  return 'too much parameters: define <NAME> RainbirdController' if ( @a > 3 );
   return 'Cannot define RainbirdController device. Perl modul "' . ${missingModul} . '" is missing.' if ($missingModul);
 
   my $name = $a[0];
-  # $a[1] just contains the "RainbirdController" module name and we already know that! :-)
-  my $host	= $a[2];
+  #          $a[1] just contains the "RainbirdController" module name and we already know that! :-)
+  my $host = $a[2];
 
   ### Stop the current timer if one exists errornous 
   RemoveInternalTimer($hash);
@@ -431,7 +432,7 @@ sub RainbirdController_Notify($$)
     RainbirdController_TimerRestart($hash);
   }
 
-  return;
+  return undef;
 }
 
 #####################################

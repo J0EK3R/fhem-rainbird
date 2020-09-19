@@ -97,10 +97,12 @@ sub RainbirdZone_Define($$)
   my ( $hash, $def ) = @_;
   my @a = split( "[ \t]+", $def );
 
-  return 'too few parameters: define <NAME> RainbirdZone <zone_Id>' if ( @a < 2 );
+  return 'too few parameters: define <NAME> RainbirdZone <zone_Id>' if ( @a < 3 );
+  return 'too much parameters: define <NAME> RainbirdZone <zone_Id>' if ( @a > 3 );
   return 'Cannot define RainbirdZone device. Perl modul "' . ${missingModul} . '" is missing.' if ($missingModul);
 
   my $name   = $a[0];
+  #            $a[1] just contains the "RainbirdZone" module name and we already know that! :-)
   my $zoneId = $a[2];
 
   $hash->{VERSION}        = $VERSION;
@@ -137,8 +139,10 @@ sub RainbirdZone_Define($$)
       $d->{NAME} ne $name
     );
 
+  my $iodev_room = AttrVal( $iodev, 'room', 'Rainbird' );
+
   ### ensure attribute room is present
-  CommandAttr( undef, $name . ' room Rainbird' )
+  CommandAttr( undef, $name . ' room ' . $iodev_room )
     if ( AttrVal( $name, 'room', 'none' ) eq 'none' );
 
   ### ensure attribute webCmd is present
@@ -250,7 +254,7 @@ sub RainbirdZone_Notify($$)
 
   Log3 $name, 4, "RainbirdZone ($name) - Notify";
 
-  return;
+  return undef;
 }
 
 #####################################
@@ -317,46 +321,59 @@ sub RainbirdZone_Set($@)
 #####################################
 sub RainbirdZone_Parse($$)
 {
-  my ( $io_hash, $message ) = @_;
-  my $io_name = $io_hash->{NAME};
+  my ( $rainbirdController_hash, $message ) = @_;
+  my $rainbirdController_name = $rainbirdController_hash->{NAME};
 
-  Log3 $io_name, 4, "RainbirdZone - Parse was called from $io_name: \"$message\"";
+  Log3 $rainbirdController_name, 4, "RainbirdZone - Parse was called from $rainbirdController_name: \"$message\"";
 
   ### create structure from json string
   my $json_message = eval { decode_json($message) };
 
   if ($@)
   {
-    Log3 $io_name, 2, "RainbirdZone - Parse: JSON error while request: $@";
+    Log3 $rainbirdController_name, 2, "RainbirdZone - Parse: JSON error while request: $@";
     return;
   }
 
   if(defined($modules{RainbirdZone}{defptr}))
   {
-  	my $name = "UNDEFINED";
+  	### autocreate not existing RainbirdZone modules
+    my $zonesAvailableMask = $rainbirdController_hash->{"ZONESAVAILABLEMASK"};
+    for my $currentZoneId (1..32)
+    {
+      ### shift bit to current position in mask
+      my $currentBit = 1 << ($currentZoneId - 1);
+      
+      ### if bit is set in mask
+      if( $zonesAvailableMask & $currentBit and
+        not defined ($modules{RainbirdZone}{defptr}{$currentZoneId}) )
+      {
+        Log3 $rainbirdController_name, 4, "RainbirdZone - RainbirdZone $currentZoneId not defined";
+
+        my $rainbirdZone_name = 'Rainbird.Zone.' . sprintf("%02d", $currentZoneId);
+        
+        DoTrigger("global",'UNDEFINED ' . $rainbirdZone_name . ' RainbirdZone ' . $currentZoneId);
+      }
+    }
+
   	if($json_message->{"identifier"} eq "Rainbird") # additional (unnecessary) check
   	{
+  	  ### dispatch message to any existing RainbirdZone module
   	  while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
       {
-        $name = $hash->{NAME};
-        Log3 $io_name, 5, "RainbirdZone - Parse found module: \"$name\"";
+        my $rainbirdZone_name = $hash->{NAME};
+        Log3 $rainbirdController_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
       
         RainbirdZone_ProcessMessage($hash, $json_message);
       }  
     }
     
-    # return any valid module name
-    return $name;
+    return "";
   }
   else
   {
-    Log3 $io_name, 4, "RainbirdZone - Parse no Zones defined";
+    Log3 $rainbirdController_name, 4, "RainbirdZone - Parse no Zones defined";
   }
-
-#   return "UNDEFINED " .
-#        "RainbirdZone.$zoneId " . # name
-#	    "RainbirdZone " .         # module
-#	    "$zoneId";                # parameter
   
   return;
 }
