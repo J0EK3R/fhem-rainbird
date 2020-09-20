@@ -246,7 +246,7 @@ sub RainbirdController_Define($$)
 
   ### ensure attribute event-on-change-reading is present
   ### exclude readings currentTime and currentDate
-  CommandAttr( undef, $name . ' event-on-change-reading (?!currentTime|currentDate).*' )
+  CommandAttr( undef, $name . ' event-on-change-reading (?!currentTime).*' )
     if ( AttrVal( $name, 'event-on-change-reading', 'none' ) eq 'none' );
 
   ### set reference to this instance in global modules hash

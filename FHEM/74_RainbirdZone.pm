@@ -358,7 +358,7 @@ sub RainbirdZone_Parse($$)
 
         my $rainbirdZone_name = 'RainbirdZone.' . sprintf("%02d", $currentZoneId);
         
-        DoTrigger("global",'UNDEFINED ' . $rainbirdZone_name . ' RainbirdZone ' . $currentZoneId);
+        DoTrigger("global", 'UNDEFINED ' . $rainbirdZone_name . ' RainbirdZone ' . $currentZoneId);
       }
     }
 
@@ -371,9 +371,13 @@ sub RainbirdZone_Parse($$)
         Log3 $rainbirdController_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
       
         RainbirdZone_ProcessMessage($hash, $json_message);
+        
+        ### set result to trigger
+        DoTrigger($rainbirdZone_name, undef);
       }  
     }
     
+    ### don't use FHEM's trigger
     return "";
   }
   else
