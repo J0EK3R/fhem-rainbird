@@ -33,16 +33,14 @@ package main;
 
 use strict;
 use warnings;
-use Digest::SHA qw(sha256);
-use Crypt::Mode::CBC;
-use Crypt::CBC;
 
 my $missingModul = '';
-eval "use Encode qw(encode encode_utf8 decode_utf8);1" or $missingModul .= "Encode ";
-eval "use IO::Socket::SSL;1" or $missingModul .= 'IO::Socket::SSL ';
 eval "use JSON;1" or $missingModul .= "JSON ";
+eval "use Digest::SHA qw(sha256);1" or $missingModul .= 'Digest::SHA ';
+eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
+eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
-### Declare functions
+### Forward declarations
 sub RainbirdController_Initialize($);
 sub RainbirdController_Define($$);
 sub RainbirdController_Undef($$);
@@ -53,6 +51,7 @@ sub RainbirdController_Notify($$);
 sub RainbirdController_Write($@);
 sub RainbirdController_Set($@);
 sub RainbirdController_Get($@);
+sub RainbirdController_TimerStop($);
 sub RainbirdController_TimerRestart($);
 sub RainbirdController_TimerCallback($);
 sub RainbirdController_GetDeviceState($;$);
@@ -221,7 +220,7 @@ sub RainbirdController_Define($$)
   my $host = $a[2];
 
   ### Stop the current timer if one exists errornous 
-  RemoveInternalTimer($hash);
+  RainbirdController_TimerStop($hash);
 
   ### some internal settings
   $hash->{VERSION}                = $VERSION;
@@ -235,14 +234,20 @@ sub RainbirdController_Define($$)
   $hash->{"ZONEACTIVE"}           = 0; # hidden internal with raw integer value
   $hash->{"ZONEACTIVEMASK"}       = 0; # hidden internal with raw integer value
   $hash->{REQUESTID}              = 0;
+  $hash->{TIMERON}                = 0;
   
   ### set attribute defaults
   CommandAttr( undef, $name . ' room Rainbird' )
     if ( AttrVal( $name, 'room', 'none' ) eq 'none' );
 
-  # ensure attribute webCmd is present
+  ### ensure attribute webCmd is present
   CommandAttr( undef, $name . ' webCmd StopIrrigation' )
     if ( AttrVal( $name, 'webCmd', 'none' ) eq 'none' );
+
+  ### ensure attribute event-on-change-reading is present
+  ### exclude readings currentTime and currentDate
+  CommandAttr( undef, $name . ' event-on-change-reading (?!currentTime|currentDate).*' )
+    if ( AttrVal( $name, 'event-on-change-reading', 'none' ) eq 'none' );
 
   ### set reference to this instance in global modules hash
   $modules{RainbirdController}{defptr}{CONTROLLER} = $hash;
@@ -262,7 +267,7 @@ sub RainbirdController_Undef($$)
 {
   my ( $hash, $name ) = @_;
 
-  RemoveInternalTimer($hash);
+  RainbirdController_TimerStop($hash);
 
   delete $modules{RainbirdController}{defptr}{CONTROLLER}
     if ( defined( $modules{RainbirdController}{defptr}{CONTROLLER} ) );
@@ -313,15 +318,17 @@ sub RainbirdController_Attr(@)
   {
     if ( $cmd eq 'set' and $attrVal eq '1' )
     {
-      RemoveInternalTimer($hash);
-      
       readingsSingleUpdate( $hash, 'state', 'inactive', 1 );
       Log3 $name, 3, "RainbirdController ($name) - disabled";
+
+      RainbirdController_TimerStop($hash);
     } 
     elsif ( $cmd eq 'del' )
     {
       readingsSingleUpdate( $hash, 'state', 'active', 1 );
       Log3 $name, 3, "RainbirdController ($name) - enabled";
+
+      RainbirdController_TimerRestart($hash);
     }
   }
 
@@ -348,22 +355,26 @@ sub RainbirdController_Attr(@)
   {
     if ( $cmd eq 'set' )
     {
-      RemoveInternalTimer($hash);
+      Log3 $name, 3, "RainbirdController ($name) - set interval: $attrVal";
+
+      RainbirdController_TimerStop($hash);
 
       return 'Interval must be greater than 0'
         unless ( $attrVal > 0 );
 
       $hash->{INTERVAL} = $attrVal;
 
-      Log3 $name, 3, "RainbirdController ($name) - set interval: $attrVal";
+      RainbirdController_TimerRestart($hash);
     } 
     elsif ( $cmd eq 'del' )
     {
-      RemoveInternalTimer($hash);
+      Log3 $name, 3, "RainbirdController ($name) - delete user interval and set default: $hash->{INTERVAL}";
+
+      RainbirdController_TimerStop($hash);
       
       $hash->{INTERVAL} = $DefaultInterval;
 
-      Log3 $name, 3, "RainbirdController ($name) - delete User interval and set default: $hash->{INTERVAL}";
+      RainbirdController_TimerRestart($hash);
     }
   }
 
@@ -455,7 +466,7 @@ sub RainbirdController_Set($@)
 {
   my ( $hash, $name, $cmd, @args ) = @_;
 
-  Log3 $name, 4, "RainbirdController ($name) - Set was called cmd: $cmd";
+  Log3 $name, 3, "RainbirdController ($name) - Set was called cmd: $cmd";
 
   ### Password
   if ( lc $cmd eq lc 'Password' )
@@ -465,6 +476,7 @@ sub RainbirdController_Set($@)
 
     my $passwd = join( ' ', @args );
     RainbirdController_StorePassword( $hash, $passwd );
+    RainbirdController_TimerRestart($hash);
   } 
   
   ### DeletePassword
@@ -703,6 +715,20 @@ sub RainbirdController_Get($@)
 }
 
 #####################################
+# stopps the internal timer
+#####################################
+sub RainbirdController_TimerStop($)
+{
+  my ( $hash ) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "RainbirdController ($name) - timerStop";
+
+  RemoveInternalTimer($hash);
+  $hash->{TIMERON} = 0;
+}
+
+#####################################
 # (re)starts the internal timer
 #####################################
 sub RainbirdController_TimerRestart($)
@@ -710,7 +736,9 @@ sub RainbirdController_TimerRestart($)
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
 
-  RemoveInternalTimer($hash);
+  Log3 $name, 4, "RainbirdController ($name) - timerRestart";
+
+  RainbirdController_TimerStop($hash);
 
   if ( IsDisabled($name) )
   {
@@ -728,11 +756,10 @@ sub RainbirdController_TimerRestart($)
     return;
   } 
 
-  Log3 $name, 4, "RainbirdController ($name) - timerRestart";
-
   ### if RainbirdController_Function fails no callback function is called
   ### so reload timer for next try
   InternalTimer( gettimeofday() + $hash->{RETRYINTERVAL}, \&RainbirdController_TimerRestart, $hash );
+  $hash->{TIMERON} = 1;
 
   # get static deviceInfo and start timer on callback
   my $startTimer = sub 
@@ -750,7 +777,7 @@ sub RainbirdController_TimerCallback($)
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
 
-  RemoveInternalTimer($hash);
+  RainbirdController_TimerStop($hash);
 
   if ( IsDisabled($name) )
   {
@@ -765,12 +792,15 @@ sub RainbirdController_TimerCallback($)
   ### if RainbirdController_Function fails no callback function is called
   ### so reload timer for next try
   InternalTimer( gettimeofday() + $hash->{RETRYINTERVAL}, \&RainbirdController_TimerCallback, $hash );
-
+  $hash->{TIMERON} = 1;
+  
+  my $nextInterval = gettimeofday() + $hash->{INTERVAL};
   my $reloadTimer = sub 
   {
     ### reload timer
     RemoveInternalTimer($hash);
-    InternalTimer( gettimeofday() + $hash->{INTERVAL}, \&RainbirdController_TimerCallback, $hash );
+    InternalTimer( $nextInterval, \&RainbirdController_TimerCallback, $hash );
+    $hash->{TIMERON} = 1;
   };
 
   RainbirdController_GetDeviceState($hash, $reloadTimer);
@@ -793,7 +823,7 @@ sub RainbirdController_GetDeviceState($;$)
     # if there is a callback then call it
     if( defined($callback))
     {
-      Log3 $name, 3, "RainbirdController ($name) - getDeviceState callback";
+      Log3 $name, 4, "RainbirdController ($name) - getDeviceState callback";
       $callback->();
     }
   };	 
@@ -2026,11 +2056,11 @@ sub RainbirdController_EncryptData($$$)
   
   my $c = RainbirdController_AddPadding($hash, $tocodedata);
   Log3 $name, 5, "RainbirdController ($name) - encrypt: c: \"" . (sprintf("%v02X", $c) =~ s/\.//rg) . "\"";
-  #Log3 $name, 3, "RainbirdController ($name) - encrypt: c: \"$c\"";
+  #Log3 $name, 5, "RainbirdController ($name) - encrypt: c: \"$c\"";
 
   my $b = sha256($encryptkey);
   Log3 $name, 5, "RainbirdController ($name) - encrypt: b: \"" . (sprintf("%v02X", $b) =~ s/\.//rg) . "\"";
-  #Log3 $name, 3, "RainbirdController ($name) - encrypt: b: \"$b\"";
+  #Log3 $name, 5, "RainbirdController ($name) - encrypt: b: \"$b\"";
 
   my $b2 = sha256($data);
   Log3 $name, 5, "RainbirdController ($name) - encrypt: b2: \"" . (sprintf("%v02X", $b2) =~ s/\.//rg) . "\"";
@@ -2050,7 +2080,7 @@ sub RainbirdController_EncryptData($$$)
   
   my $result = $b2 . $iv . $encrypteddata;
   Log3 $name, 5, "RainbirdController ($name) - encrypt: result: \"" . (sprintf("%v02X", $result) =~ s/\.//rg) . "\"";
-  #Log3 $name, 3, "RainbirdController ($name) - encrypt: encrypteddata: \"$encrypteddata\"";
+  #Log3 $name, 5, "RainbirdController ($name) - encrypt: encrypteddata: \"$encrypteddata\"";
 
   return $result;
 }
@@ -2086,7 +2116,7 @@ sub RainbirdController_DecryptData($$$)
   my $decrypteddata = $cbc->decrypt($encrypted_data, $symmetric_key, $iv); 
 
   Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"";
-  #Log3 $name, 3, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
+  #Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
   
   $decrypteddata =~ s/\x10+$//;
   $decrypteddata =~ s/\x0a+$//;
@@ -2095,7 +2125,7 @@ sub RainbirdController_DecryptData($$$)
   $decrypteddata =~ s/\s+$//;
   
   Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"";
-  #Log3 $name, 3, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
+  #Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
   
   return $decrypteddata;
 }
@@ -2148,7 +2178,7 @@ sub RainbirdController_ReadPassword($)
 
   if ( defined($err) )
   {
-    Log3 $name, 3, "RainbirdController ($name) - unable to read password from file: $err";
+    Log3 $name, 5, "RainbirdController ($name) - unable to read password from file: $err";
     return undef;
   }
 
@@ -2174,7 +2204,7 @@ sub RainbirdController_ReadPassword($)
   } 
   else
   {
-    Log3 $name, 3, "RainbirdController ($name) - No password in file";
+    Log3 $name, 5, "RainbirdController ($name) - No password in file";
     return undef;
   }
 }

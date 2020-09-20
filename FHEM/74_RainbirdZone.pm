@@ -37,7 +37,7 @@ use warnings;
 my $missingModul = "";
 eval "use JSON;1" or $missingModul .= "JSON ";
 
-### Declare functions
+### Forward declarations
 sub RainbirdZone_Initialize($);
 sub RainbirdZone_Define($$);
 sub RainbirdZone_Undef($$);
@@ -57,7 +57,7 @@ my $VERSION = '0.0.1';
 my $DefaultIrrigationTime = 10;
 
 #####################################
-#
+# Initialize( $hash )
 #####################################
 sub RainbirdZone_Initialize($)
 {
@@ -112,9 +112,11 @@ sub RainbirdZone_Define($$)
   $hash->{IRRIGATIONTIME} = $DefaultIrrigationTime;
   $hash->{AVAILABLE}      = 0;
 
-  CommandAttr( undef, "$name IODev " . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
+  ### ensure attribute IODev is present
+  CommandAttr( undef, $name . ' IODev ' . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
     if ( AttrVal( $name, 'IODev', 'none' ) eq 'none' );
 
+  ### get IODev and assign Zone to IODev
   my $iodev = AttrVal( $name, 'IODev', 'none' );
 
   AssignIoPort( $hash, $iodev )
@@ -152,6 +154,10 @@ sub RainbirdZone_Define($$)
   ### ensure attribute irrigationTime is present
   CommandAttr( undef, $name . ' irrigationTime 10' )
     if ( AttrVal( $name, 'irrigationTime', 'none' ) eq 'none' );
+
+  # ensure attribute event-on-change-reading is present
+  CommandAttr( undef, $name . ' event-on-change-reading .*' )
+    if ( AttrVal( $name, 'event-on-change-reading', 'none' ) eq 'none' );
 
   ### set reference to this instance in global modules hash
   $modules{RainbirdZone}{defptr}{$zoneId} = $hash;
@@ -193,7 +199,7 @@ sub RainbirdZone_Delete($$)
 }
 
 #####################################
-#
+# Attr( $cmd, $name, $attrName, $attrVal )
 #####################################
 sub RainbirdZone_Attr(@)
 {
@@ -207,7 +213,7 @@ sub RainbirdZone_Attr(@)
   {
     if ( $cmd eq 'set' and $attrVal eq '1' )
     {
-      readingsSingleUpdate( $hash, 'state', 'inactive', 1 );
+      readingsSingleUpdate( $hash, 'state', 'disabled', 1 );
       Log3 $name, 3, "RainbirdZone ($name) - disabled";
     } 
     elsif ( $cmd eq 'del' )
@@ -235,7 +241,7 @@ sub RainbirdZone_Attr(@)
 }
 
 #####################################
-#
+# Notify( $hash, $dev )
 #####################################
 sub RainbirdZone_Notify($$)
 {
@@ -258,7 +264,7 @@ sub RainbirdZone_Notify($$)
 }
 
 #####################################
-#
+# Set( $hash, $name, $cmd, @args )
 #####################################
 sub RainbirdZone_Set($@)
 {
@@ -317,7 +323,7 @@ sub RainbirdZone_Set($@)
 }
 
 #####################################
-#
+# Parse( $rainbirdController_hash, $message )
 #####################################
 sub RainbirdZone_Parse($$)
 {
@@ -335,9 +341,9 @@ sub RainbirdZone_Parse($$)
     return;
   }
 
+  ### autocreate not existing RainbirdZone modules
   if(defined($modules{RainbirdZone}{defptr}))
   {
-  	### autocreate not existing RainbirdZone modules
     my $zonesAvailableMask = $rainbirdController_hash->{"ZONESAVAILABLEMASK"};
     for my $currentZoneId (1..32)
     {
@@ -350,15 +356,15 @@ sub RainbirdZone_Parse($$)
       {
         Log3 $rainbirdController_name, 4, "RainbirdZone - RainbirdZone $currentZoneId not defined";
 
-        my $rainbirdZone_name = 'Rainbird.Zone.' . sprintf("%02d", $currentZoneId);
+        my $rainbirdZone_name = 'RainbirdZone.' . sprintf("%02d", $currentZoneId);
         
         DoTrigger("global",'UNDEFINED ' . $rainbirdZone_name . ' RainbirdZone ' . $currentZoneId);
       }
     }
 
+    ### dispatch message to any existing RainbirdZone module
   	if($json_message->{"identifier"} eq "Rainbird") # additional (unnecessary) check
   	{
-  	  ### dispatch message to any existing RainbirdZone module
   	  while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
       {
         my $rainbirdZone_name = $hash->{NAME};
@@ -379,12 +385,15 @@ sub RainbirdZone_Parse($$)
 }
 
 #####################################
-#
+# ProcessMessage( $hash, $json_message )
 #####################################
 sub RainbirdZone_ProcessMessage($$)
 {
   my ( $hash, $json_message ) = @_;
   my $name = $hash->{NAME};
+
+  return
+    if ( IsDisabled($name) );
 
   Log3 $name, 5, "RainbirdZone ($name) - ProcessMessage was called";
   
@@ -426,7 +435,7 @@ sub RainbirdZone_ProcessMessage($$)
 }
 
 #####################################
-#
+# GetZoneActive( $hash )
 #####################################
 sub RainbirdZone_GetZoneActive($)
 {
@@ -461,7 +470,7 @@ sub RainbirdZone_GetZoneActive($)
 }
 
 #####################################
-#
+# GetZoneAvailable( $hash )
 #####################################
 sub RainbirdZone_GetZoneAvailable($)
 {
@@ -500,7 +509,7 @@ sub RainbirdZone_GetZoneAvailable($)
 }
 
 #####################################
-#
+# GetZoneMask( $hash )
 #####################################
 sub RainbirdZone_GetZoneMask($)
 {
