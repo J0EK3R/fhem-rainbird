@@ -92,6 +92,11 @@ sub RainbirdController_DeletePassword($);
 ### statics
 my $VERSION = '0.0.1';
 
+### hash with all known models
+my %KnownModels = (
+  3 => "ESP-RZXe Serie",
+);
+
 my %ControllerCommands = (
     "ModelAndVersionRequest" => {"command" => "02", "response" => "82", "length" => 1},
     "AvailableStationsRequest" => {"command" => "03", "parameter" => 0, "response" => "83", "length" => 2},
@@ -892,7 +897,21 @@ sub RainbirdController_GetModelAndVersion($;$)
 
       if( defined($result->{"modelID"}) )
       {
-        $hash->{MODELID} = $result->{"modelID"};
+      	my $modelId = $result->{"modelID"};
+      	
+        $hash->{MODELID} = $modelId;
+        
+        my $model = $KnownModels{$modelId};
+
+        ### set known model name
+        if( defined($model) )
+        {
+          $hash->{MODEL} = $model;
+        }
+        else
+        {
+          $hash->{MODEL} = "unknown";
+        }
       }
 
       if( defined($result->{"protocolRevisionMajor"}) )
