@@ -37,7 +37,7 @@ If autocreate is enabled the zones of your system are recognized automatically a
 
 Expert mode is enabled by setting the attribute "expert" .
 
-    IrrigateZone - starts irrigating a zone
+    IrrigateZone <zone> <minutes> - starts irrigating the <zone> for <minutes>
 
 ## get [expert mode]
 
