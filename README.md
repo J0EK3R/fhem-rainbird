@@ -6,16 +6,18 @@ You can start/stop the irrigation and get the currently active zone.
 This module communicates directly with the WiFi module - it does not support the cloud.
 The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.
 
+This perl code is ported from project https://github.com/jbarrancos/pyrainbird.
+
 ## Define
 
     define <name> RainbirdControler <host>
 
+The RainbirdControler device is created in the room "Rainbird".
+If autocreate is enabled the zones of your system are recognized automatically and created in FHEM.
+
 ### Example:
 
     define RainbirdControler RainbirdControler rainbird.fritz.box
-
-The RainbirdControler device is created in the room "Rainbird".
-If autocreate is enabled the zones of your system are recognized automatically and created in FHEM.
 
 ## Readings
     currentDate - current internal date of the controler
