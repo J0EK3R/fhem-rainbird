@@ -52,7 +52,7 @@ sub RainbirdZone_GetZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '0.0.1';
+my $VERSION = '1.0.1';
 
 my $DefaultIrrigationTime = 10;
 
@@ -113,7 +113,7 @@ sub RainbirdZone_Define($$)
   $hash->{AVAILABLE}      = 0;
 
   ### ensure attribute IODev is present
-  CommandAttr( undef, $name . ' IODev ' . $modules{RainbirdControler}{defptr}{CONTROLER}->{NAME} )
+  CommandAttr( undef, $name . ' IODev ' . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
     if ( AttrVal( $name, 'IODev', 'none' ) eq 'none' );
 
   ### get IODev and assign Zone to IODev
@@ -135,7 +135,7 @@ sub RainbirdZone_Define($$)
 
   my $d = $modules{RainbirdZone}{defptr}{$zoneId};
 
-  return "RainbirdZone device $name on RainbirdControler $iodev already defined."
+  return "RainbirdZone device $name on RainbirdController $iodev already defined."
     if ( defined($d) and 
       $d->{IODev} == $hash->{IODev} and 
       $d->{NAME} ne $name
@@ -165,7 +165,7 @@ sub RainbirdZone_Define($$)
   ### set initial state
   readingsSingleUpdate( $hash, 'state', 'initialized', 1 );
 
-  ### update -> values are fetched from internals of attached RainbirdControler
+  ### update -> values are fetched from internals of attached RainbirdController
   RainbirdZone_GetZoneAvailable($hash);
   RainbirdZone_GetZoneActive($hash);
 
@@ -287,7 +287,7 @@ sub RainbirdZone_Set($@)
     $minutes = $args[0]
       if ( @args == 1 );
 
-    # send command via RainbirdControler
+    # send command via RainbirdController
     IOWrite( $hash, $cmd, $zoneId, $minutes );
   } 
 
@@ -297,7 +297,7 @@ sub RainbirdZone_Set($@)
     return "usage: $cmd"
       if ( @args != 0 );
 
-    # send command via RainbirdControler
+    # send command via RainbirdController
     IOWrite( $hash, $cmd );
   } 
   
@@ -323,28 +323,28 @@ sub RainbirdZone_Set($@)
 }
 
 #####################################
-# Parse( $rainbirdControler_hash, $message )
+# Parse( $rainbirdController_hash, $message )
 #####################################
 sub RainbirdZone_Parse($$)
 {
-  my ( $rainbirdControler_hash, $message ) = @_;
-  my $rainbirdControler_name = $rainbirdControler_hash->{NAME};
+  my ( $rainbirdController_hash, $message ) = @_;
+  my $rainbirdController_name = $rainbirdController_hash->{NAME};
 
-  Log3 $rainbirdControler_name, 4, "RainbirdZone - Parse was called from $rainbirdControler_name: \"$message\"";
+  Log3 $rainbirdController_name, 4, "RainbirdZone - Parse was called from $rainbirdController_name: \"$message\"";
 
   ### create structure from json string
   my $json_message = eval { decode_json($message) };
 
   if ($@)
   {
-    Log3 $rainbirdControler_name, 2, "RainbirdZone - Parse: JSON error while request: $@";
+    Log3 $rainbirdController_name, 2, "RainbirdZone - Parse: JSON error while request: $@";
     return;
   }
 
   ### autocreate not existing RainbirdZone modules
   if(defined($modules{RainbirdZone}{defptr}))
   {
-    my $zonesAvailableMask = $rainbirdControler_hash->{"ZONESAVAILABLEMASK"};
+    my $zonesAvailableMask = $rainbirdController_hash->{"ZONESAVAILABLEMASK"};
     for my $currentZoneId (1..32)
     {
       ### shift bit to current position in mask
@@ -354,7 +354,7 @@ sub RainbirdZone_Parse($$)
       if( $zonesAvailableMask & $currentBit and
         not defined ($modules{RainbirdZone}{defptr}{$currentZoneId}) )
       {
-        Log3 $rainbirdControler_name, 4, "RainbirdZone - RainbirdZone $currentZoneId not defined";
+        Log3 $rainbirdController_name, 4, "RainbirdZone - RainbirdZone $currentZoneId not defined";
 
         my $rainbirdZone_name = 'RainbirdZone.' . sprintf("%02d", $currentZoneId);
         
@@ -368,7 +368,7 @@ sub RainbirdZone_Parse($$)
   	  while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
       {
         my $rainbirdZone_name = $hash->{NAME};
-        Log3 $rainbirdControler_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
+        Log3 $rainbirdController_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
       
         RainbirdZone_ProcessMessage($hash, $json_message);
         
@@ -382,7 +382,7 @@ sub RainbirdZone_Parse($$)
   }
   else
   {
-    Log3 $rainbirdControler_name, 4, "RainbirdZone - Parse no Zones defined";
+    Log3 $rainbirdController_name, 4, "RainbirdZone - Parse no Zones defined";
   }
   
   return;
@@ -419,7 +419,7 @@ sub RainbirdZone_ProcessMessage($$)
   {
   	### "{"response":"BF","type":"CurrentStationsActiveResponse","identifier":"Rainbird","pageNumber":0,"activeStations":134217728}"
   	
-  	### just trigger function -> values are fetched from internals of attached RainbirdControler
+  	### just trigger function -> values are fetched from internals of attached RainbirdController
   	RainbirdZone_GetZoneActive($hash);
   }
 
@@ -428,7 +428,7 @@ sub RainbirdZone_ProcessMessage($$)
   {
   	### "{"identifier":"Rainbird","pageNumber":0,"setStations":4278190080,"type":"AvailableStationsResponse","response":"83"}"
 
-    ### just trigger function -> values are fetched from internals of attached RainbirdControler
+    ### just trigger function -> values are fetched from internals of attached RainbirdController
     RainbirdZone_GetZoneAvailable($hash);
   }
 
@@ -528,19 +528,19 @@ sub RainbirdZone_GetZoneMask($)
 =pod
 
 =item device
-=item summary    Modul representing an irrigation zone of a Rainbird Controler
+=item summary    Modul representing an irrigation zone of a Rainbird Controller
 
 =begin html
 
 <a name="RainbirdZone"></a>
 <h3>RainbirdZone</h3>
 <br>
-In combination with RainbirdControler this FHEM module represents an irrigation zone of the <b>Rain Bird Irrigation System</b>.<br>
+In combination with RainbirdController this FHEM module represents an irrigation zone of the <b>Rain Bird Irrigation System</b>.<br>
 <br>
-Once the RainbirdControler device is created and connected and autocreate is enabled all available irrigation zones are automatically recognized and created in FHEM.<br>
+Once the RainbirdController device is created and connected and autocreate is enabled all available irrigation zones are automatically recognized and created in FHEM.<br>
 <br>
 <ul>
-  <a name="RainbirdControlerdefine"></a>
+  <a name="RainbirdControllerdefine"></a>
   <b>Define</b>
   <br><br>
   <code>define &lt;name&gt; RainbirdZone &lt;ZoneId&gt;</code>

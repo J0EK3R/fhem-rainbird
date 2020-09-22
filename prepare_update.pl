@@ -4,7 +4,7 @@ use File::Basename;
 use POSIX qw(strftime);
 use strict;
 
-my @filenames = ( "73_RainbirdControler.pm",
+my @filenames = ( "73_RainbirdController.pm",
 		  "74_RainbirdZone.pm");
 
 my $prefix = "FHEM";
