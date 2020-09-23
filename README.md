@@ -1,7 +1,11 @@
 # fhem-rainbird
-The FHEM modules RainbirdController interacts with WiFi LNK module of the Rain Bird Irrigation System.
+The FHEM module RainbirdController interacts with WiFi LNK module of the Rain Bird Irrigation System.
 
-You can start/stop the irrigation and get the currently active zone.
+Currently you can
+* start/stop the irrigation
+* get the currently active zone.
+* get the available zones of the controller model
+* get/set internal date and time of the controller
 
 This module communicates directly with the WiFi module - it does not support the cloud.
 The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.
