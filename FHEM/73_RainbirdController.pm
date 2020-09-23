@@ -634,13 +634,13 @@ sub RainbirdController_Set($@)
 
     if ( defined( RainbirdController_ReadPassword($hash) ))
     {
-      $list .= " DeletePassword:noArg";
-      $list .= " StopIrrigation:noArg";
-      $list .= " RainDelay";
-      $list .= " SynchronizeDateTime:noArg";
-      $list .= " Time";
-      $list .= " Date";
       $list .= " ClearReadings:noArg";
+      $list .= " DeletePassword:noArg";
+      $list .= " RainDelay";
+      $list .= " StopIrrigation:noArg";
+      $list .= " SynchronizeDateTime:noArg";
+      $list .= " Date";
+      $list .= " Time";
       $list .= " Update:noArg";
       $list .= " IrrigateZone" if($hash->{EXPERTMODE});
     }
@@ -786,8 +786,8 @@ sub RainbirdController_Get($@)
       $list .= " ModelAndVersion:noArg" if($hash->{EXPERTMODE});
       $list .= " AvailableZones:noArg" if($hash->{EXPERTMODE});
       $list .= " SerialNumber:noArg" if($hash->{EXPERTMODE});
-      $list .= " Time:noArg" if($hash->{EXPERTMODE});
       $list .= " Date:noArg" if($hash->{EXPERTMODE});
+      $list .= " Time:noArg" if($hash->{EXPERTMODE});
       $list .= " RainSensorState:noArg" if($hash->{EXPERTMODE});
       $list .= " RainDelay:noArg" if($hash->{EXPERTMODE});
       $list .= " CurrentIrrigation:noArg" if($hash->{EXPERTMODE});
@@ -2529,11 +2529,11 @@ The communication of this FHEM module competes with the communication of the app
     <li>ClearReadings - clears all readings</li>
     <li>DeletePassword - deletes the password from store</li>
     <li>Password - sets the password in store</li>
-    <li>SetRainDelay - sets the delay in days</li>
-    <li>SynchronizeDateTime - synchronizes the internal time of the controller with fhem's time</li>
-    <li>Time - sets the internal time of the controller</li>
-    <li>Date - sets the internal date of the controller</li>
+    <li>RainDelay - sets the delay in days</li>
     <li>StopIrrigation - stops irrigating</li>
+    <li>SynchronizeDateTime - synchronizes the internal date and time of the controller with fhem's time</li>
+    <li>Date - sets the internal date of the controller - format YYYY-MM-DD</li>
+    <li>Time - sets the internal time of the controller- format HH:MM or HH:MM:SS</li>
     <li>Update - updates the device info and state</li>
   </ul>
   <br><br>
@@ -2552,13 +2552,13 @@ The communication of this FHEM module competes with the communication of the app
   Expert mode is enabled by setting the attribute "expert"".
   <br><br>
   <ul>
-    <li>AvailableZones - gets all available zones</li>
     <li>DeviceState - get current device state</li>
     <li>DeviceInfo - get device info</li>
     <li>ModelAndVersion - get device model and version</li>
+    <li>AvailableZones - gets all available zones</li>
     <li>SerialNumber - get device serial number</li>
-    <li>Time - get internal device time</li>
     <li>Date - get internal device date</li>
+    <li>Time - get internal device time</li>
     <li>RainSensorState - get the state of the rainsensor</li>
     <li>RainDelay - get the delay in days</li>
     <li>CurrentIrrigation - get the current irrigation state</li>
