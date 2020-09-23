@@ -1,5 +1,5 @@
 # fhem-rainbird
-The FHEM modules RainbirdControler interacts with WiFi LNK module of the Rain Bird Irrigation System.
+The FHEM modules RainbirdController interacts with WiFi LNK module of the Rain Bird Irrigation System.
 
 You can start/stop the irrigation and get the currently active zone.
 
@@ -10,14 +10,14 @@ This perl code is ported from project https://github.com/jbarrancos/pyrainbird.
 
 ## Define
 
-    define <name> RainbirdControler <host>
+    define <name> RainbirdController <host>
 
 The RainbirdControler device is created in the room "Rainbird".
 If autocreate is enabled the zones of your system are recognized automatically and created in FHEM.
 
 ### Example:
 
-    define RainbirdControler RainbirdControler rainbird.fritz.box
+    define RainbirdController RainbirdController rainbird.fritz.box
 
 ## Readings
     currentDate - current internal date of the controler
