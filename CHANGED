@@ -1,3 +1,7 @@
 FHEM Rainbird last changes:
 2020-09-23
- - update Changed
+ - v1.1.0 new features
+
+set Date
+set Time
+set SynchronizeDateTime
