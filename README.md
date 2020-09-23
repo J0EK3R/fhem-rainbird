@@ -31,8 +31,11 @@ If autocreate is enabled the zones of your system are recognized automatically a
     ClearReadings - clears all readings
     DeletePassword - deletes the password from store
     Password - sets the password in store
-    SetRainDelay - sets the delay in days
+    RainDelay - sets the delay in days
     StopIrrigation - stops irrigating
+    SynchronizeDateTime - synchronizes the internal date and time of the controller with fhem's time
+    Date - sets the internal date of the controller - format YYYY-MM-DD
+    Time - sets the internal time of the controller - format HH:MM or HH:MM:SS
     Update - updates the device info and state
 
 ## set [expert mode]
@@ -45,13 +48,13 @@ Expert mode is enabled by setting the attribute "expert" .
 
 Expert mode is enabled by setting the attribute "expert"".
 
-    AvailableZones - gets all available zones
     DeviceState - get current device state
     DeviceInfo - get device info
     ModelAndVersion - get device model and version
+    AvailableZones - gets all available zones
     SerialNumber - get device serial number
-    CurrentTime - get internal device time
-    CurrentDate - get internal device date
+    Date - get internal device date
+    Time - get internal device time
     RainSensorState - get the state of the rainsensor
     RainDelay - get the delay in days
     CurrentIrrigation - get the current irrigation state
