@@ -51,32 +51,38 @@ sub RainbirdController_Notify($$);
 sub RainbirdController_Write($@);
 sub RainbirdController_Set($@);
 sub RainbirdController_Get($@);
+
 sub RainbirdController_TimerStop($);
 sub RainbirdController_TimerRestart($);
 sub RainbirdController_TimerCallback($);
+
 sub RainbirdController_GetDeviceState($;$);
 sub RainbirdController_GetDeviceInfo($;$);
+
 sub RainbirdController_GetModelAndVersion($;$);
 sub RainbirdController_GetAvailableZones($;$);
 sub RainbirdController_GetCommandSupport($$;$);
 sub RainbirdController_SetWaterBudget($$;$);
 sub RainbirdController_GetRainSensorState($;$);
 sub RainbirdController_GetSerialNumber($;$);
-
+### Time
 sub RainbirdController_GetCurrentTime($;$);
 sub RainbirdController_SetCurrentTime($$$$;$);
+### Date
 sub RainbirdController_GetCurrentDate($;$);
 sub RainbirdController_SetCurrentDate($$$$;$);
+### RainDelay
+sub RainbirdController_GetRainDelay($;$);
+sub RainbirdController_SetRainDelay($$;$);
 
 sub RainbirdController_GetCurrentIrrigation($;$);
 sub RainbirdController_GetIrrigationState($;$);
-sub RainbirdController_GetRainDelay($;$);
-sub RainbirdController_SetRainDelay($$;$);
 sub RainbirdController_IrrigateZone($$$;$);
 sub RainbirdController_TestZone($$;$);
 sub RainbirdController_SetProgram($$;$);
 sub RainbirdController_StopIrrigation($;$);
 sub RainbirdController_GetZoneFromRaw($);
+### internal tool functions
 sub RainbirdController_GetAvailableZoneCountFromRaw($);
 sub RainbirdController_GetAvailableZoneMaskFromRaw($);
 sub RainbirdController_Command($$$@);
@@ -95,45 +101,55 @@ sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 
 ### statics
-my $VERSION = '1.0.1';
+my $VERSION = '1.1.0';
 
 ### hash with all known models
 my %KnownModels = (
   3 => "ESP-RZXe Serie",
 );
 
+### format of a command entry
+### command name:             "CurrentDateSetRequest" => 
+###                           {
+###	command string:           "command" => "13", 
+### first parameter charlen:  "parameter1" => 2, 
+### second parameter charlen: "parameter2" => 1, "
+### thrid parameter charlen:  "parameter3" => 3, 
+### response number:          "response" => "01", 
+### total bytelength:         "length" => 4
+###                           },
 my %ControllerCommands = (
     "ModelAndVersionRequest" => {"command" => "02", "response" => "82", "length" => 1},
-    "AvailableStationsRequest" => {"command" => "03", "parameter" => 0, "response" => "83", "length" => 2},
-    "CommandSupportRequest" => {"command" => "04", "commandToTest" => "02", "response" => "84", "length" => 2},
+    "AvailableStationsRequest" => {"command" => "03", "parameter1" => 2, "response" => "83", "length" => 2},
+    "CommandSupportRequest" => {"command" => "04", "parameter1" => 2, "response" => "84", "length" => 2},
     "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
 #    "SupportedRequest" => {"command" => "06", "response" => "85", "length" => 1},
 #    "SupportedRequest" => {"command" => "07", "response" => "85", "length" => 1},
     "CurrentTimeGetRequest" => {"command" => "10", "response" => "90", "length" => 1},
-    "CurrentTimeSetRequest" => {"command" => "11", "hour" => 0, "minute" => 0, "second" => 0, "response" => "01", "length" => 4},
+    "CurrentTimeSetRequest" => {"command" => "11", "parameter1" => 2, "parameter2" => 2, "parameter3" => 2, "response" => "01", "length" => 4},
     "CurrentDateGetRequest" => {"command" => "12", "response" => "92", "length" => 1},
-    "CurrentDateSetRequest" => {"command" => "13", "day" => 0, "month" => 0, "year" => 0, "response" => "01", "length" => 7},
+    "CurrentDateSetRequest" => {"command" => "13", "parameter1" => 2, "parameter2" => 1, "parameter3" => 3, "response" => "01", "length" => 4},
 #    "CurrentScheduleRequest" => {"command" => "20", "parameterOne" => 0, "parameterTwo" => 0 ,"response" => "A0", "length" => 3 },
 #    "SupportedRequest" => {"command" => "21", "response" => "85", "length" => 1},
-    "WaterBudgetRequest" => {"command" => "30", "parameter" => 0, "response" => "B0", "length" => 2},
+    "WaterBudgetRequest" => {"command" => "30", "parameter1" => 2, "response" => "B0", "length" => 2},
 #    "SupportedRequest" => {"command" => "31", "response" => "85", "length" => 1},
-    "ZonesSeasonalAdjustFactorRequest" => {"command" => "32", "parameter" => 0, "response" => "B2", "length" => 2}, # not supported
+    "ZonesSeasonalAdjustFactorRequest" => {"command" => "32", "parameter1" => 2, "response" => "B2", "length" => 2}, # not supported
     "RainDelayGetRequest" => {"command" => "36", "response" => "B6", "length" => 1},
-    "RainDelaySetRequest" => {"command" => "37", "parameter" => 0, "response" => "01", "length" => 3},
-    "ManuallyRunProgramRequest" => {"command" => "38", "parameter" => 0, "response" => "01", "length" => 2}, # not supported
-    "ManuallyRunStationRequest" => {"command" => "39", "parameterOne" => 0, "parameterTwo" => 0, "response" => "01", "length" => 4}, 
-    "TestStationsRequest" => {"command" => "3A", "parameter" => 0, "response" => "01", "length" => 2},
+    "RainDelaySetRequest" => {"command" => "37", "parameter1" => 4, "response" => "01", "length" => 3},
+    "ManuallyRunProgramRequest" => {"command" => "38", "parameter1" => 2, "response" => "01", "length" => 2}, # not supported
+    "ManuallyRunStationRequest" => {"command" => "39", "parameter1" => 4, "parameter2" => 2, "response" => "01", "length" => 4}, 
+    "TestStationsRequest" => {"command" => "3A", "parameter1" => 2, "response" => "01", "length" => 2},
 #    "SupportedRequest" => {"command" => "3B", "response" => "85", "length" => 1},
 #    "SupportedRequest" => {"command" => "3D", "response" => "85", "length" => 1},
     "CurrentRainSensorStateRequest" => {"command" => "3E", "response" => "BE", "length" => 1},
-    "CurrentStationsActiveRequest" => {"command" => "3F", "parameter" => 0, "response" => "BF", "length" => 2},
+    "CurrentStationsActiveRequest" => {"command" => "3F", "parameter1" => 2, "response" => "BF", "length" => 2},
     "StopIrrigationRequest" => {"command" => "40", "response" => "01", "length" => 1},
 #    "SupportedRequest" => {"command" => "41", "response" => "85", "length" => 1},
-    "AdvanceStationRequest" => {"command" => "42", "parameter" => 0, "response" => "01", "length" => 2}, # not supported
+    "AdvanceStationRequest" => {"command" => "42", "parameter1" => 2, "response" => "01", "length" => 2}, # not supported
     "CurrentIrrigationStateRequest" => {"command" => "48", "response" => "C8", "length" => 1},
-    "CurrentControllerStateSet" => {"command" => "49", "parameter" => 0, "response" => "01", "length" => 2}, # not supported
-    "ControllerEventTimestampRequest" => {"command" => "4A","parameter" => 0, "response" => "CA", "length" => 2}, # not supported
-    "StackManuallyRunStationRequest" => {"command" => "4B","parameter" => 0, "parameterTwo" => 0, "parameterThree" => 0, "response" => "01", "length" => 4}, # not supported
+    "CurrentControllerStateSet" => {"command" => "49", "parameter1" => 2, "response" => "01", "length" => 2}, # not supported
+    "ControllerEventTimestampRequest" => {"command" => "4A","parameter1" => 2, "response" => "CA", "length" => 2}, # not supported
+    "StackManuallyRunStationRequest" => {"command" => "4B","parameter1" => 2, "parameter2" => 1, "parameter3" => 1, "response" => "01", "length" => 4}, # not supported
     "CombinedControllerStateRequest" => {"command" => "4C", "response" => "CC","length" => 1 }, # not supported
 #    "SupportedRequest" => {"command" => "50", "response" => "85", "length" => 1},
 #    "SupportedRequest" => {"command" => "51", "response" => "85", "length" => 1},
@@ -519,8 +535,8 @@ sub RainbirdController_Set($@)
     RainbirdController_IrrigateZone($hash, $zone, $minutes);
   } 
 
-  ### SetRainDelay
-  elsif ( lc $cmd eq lc 'SetRainDelay' )
+  ### RainDelay
+  elsif ( lc $cmd eq lc 'RainDelay' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -539,17 +555,20 @@ sub RainbirdController_Set($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
 
+    # $mday is the day of the month 
+    # $mon the month in the range 0..11 , with 0 indicating January and 11 indicating December
+    # $year contains the number of years since 1900
     my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
     
     my $callback = sub 
     {
-      RainbirdController_SetCurrentDate($hash, $year, $mon, $mday); 
+      RainbirdController_SetCurrentDate($hash, $year + 1900, $mon + 1, $mday); 
     };
     RainbirdController_SetCurrentTime($hash, $hour, $min, $sec, $callback);
   } 
 
-  ### SetTime
-  elsif ( lc $cmd eq lc 'SetTime' )
+  ### Time
+  elsif ( lc $cmd eq lc 'Time' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -567,8 +586,8 @@ sub RainbirdController_Set($@)
     RainbirdController_SetCurrentTime($hash, $hour, $min, $sec);
   } 
 
-  ### SetDate
-  elsif ( lc $cmd eq lc 'SetDate' )
+  ### Date
+  elsif ( lc $cmd eq lc 'Date' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -617,10 +636,10 @@ sub RainbirdController_Set($@)
     {
       $list .= " DeletePassword:noArg";
       $list .= " StopIrrigation:noArg";
-      $list .= " SetRainDelay";
-#      $list .= " SynchronizeDateTime:noArg";
-      $list .= " SetTime";
-#      $list .= " SetDate";
+      $list .= " RainDelay";
+      $list .= " SynchronizeDateTime:noArg";
+      $list .= " Time";
+      $list .= " Date";
       $list .= " ClearReadings:noArg";
       $list .= " Update:noArg";
       $list .= " IrrigateZone" if($hash->{EXPERTMODE});
@@ -688,8 +707,8 @@ sub RainbirdController_Get($@)
     RainbirdController_GetSerialNumber($hash);
   } 
   
-  ### CurrentTime
-  elsif ( lc $cmd eq lc 'CurrentTime' )
+  ### Time
+  elsif ( lc $cmd eq lc 'Time' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -697,8 +716,8 @@ sub RainbirdController_Get($@)
     RainbirdController_GetCurrentTime($hash);
   } 
   
-  ### CurrentDate
-  elsif ( lc $cmd eq lc 'CurrentDate' )
+  ### Date
+  elsif ( lc $cmd eq lc 'Date' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -767,8 +786,8 @@ sub RainbirdController_Get($@)
       $list .= " ModelAndVersion:noArg" if($hash->{EXPERTMODE});
       $list .= " AvailableZones:noArg" if($hash->{EXPERTMODE});
       $list .= " SerialNumber:noArg" if($hash->{EXPERTMODE});
-      $list .= " CurrentTime:noArg" if($hash->{EXPERTMODE});
-      $list .= " CurrentDate:noArg" if($hash->{EXPERTMODE});
+      $list .= " Time:noArg" if($hash->{EXPERTMODE});
+      $list .= " Date:noArg" if($hash->{EXPERTMODE});
       $list .= " RainSensorState:noArg" if($hash->{EXPERTMODE});
       $list .= " RainDelay:noArg" if($hash->{EXPERTMODE});
       $list .= " CurrentIrrigation:noArg" if($hash->{EXPERTMODE});
@@ -2074,36 +2093,78 @@ sub RainbirdController_EncodeData($$@)
   my ( $hash, $command_set, @args ) = @_;
   my $name = $hash->{NAME};
 
-  my $len_args = scalar (@args); # Anzahl der Args
+  my $args_count = scalar (@args); # count of args
 
-  Log3 $name, 5, "RainbirdController ($name) - encode with $len_args Args";
+  Log3 $name, 5, "RainbirdController ($name) - encode with $args_count args";
 
-  # get fields from structure
+  ### get fields from command_set structure
   my $command_set_code = $command_set->{"command"};
-  my $command_set_length = $command_set->{"length"};
-
-  if( $len_args > $command_set_length - 1 )
-  {
-    Log3 $name, 2, "RainbirdController ($name) - encode: Too much parameters. " . $command_set_length - 1 . " expected\n" . $command_set;
-    return undef;
-  }
+  my $command_set_byteLength = $command_set->{"length"};
+  my $command_set_charLength = $command_set_byteLength * 2;
   
-  #  params = (cmd_code,) + tuple(map(lambda x: int(x), args))
-  #  arg_placeholders = (("%%0%dX" % ((command_set["length"] - len(args)) * 2))
-  #                      if len(args) > 0
-  #                      else "") + ("%02X" * (len(args) - 1))
-  #  data = ("%s" + arg_placeholders) % (params)
+  ### put $command_set_code and args array in new params array for sprintf-call
   my @params = ($command_set_code, @args);
 
   my $arg_placeholders = "";
-  if($len_args > 0)
+  my $arg_placeholders_charLength = 2; # first two chars for command
+  my $args_found = 0;
+
+  ### if there are any args then find them in the command_set with keyname "parameterX"
+  ### and add them to format string arg_placeholder
+  for my $index (1..$args_count)
   {
-    $arg_placeholders = sprintf("%%0%dX", ($command_set_length - $len_args) * 2);
-    $arg_placeholders .= ("%02X" x ($len_args - 1));
-  }                        
-  my $result = sprintf("%s" . $arg_placeholders, @params);
+  	### create keyname "parameterX"
+  	my $keyName = "parameter" . $index;
+    
+    ### if there is an entry in hash then charLength is defined
+    my $charLength = $command_set->{$keyName};
+    
+    if(not defined($charLength))
+    {
+      Log3 $name, 3, "RainbirdController ($name) - encode: Error \"$keyName\" not found";
+      return undef;
+    }
+
+    Log3 $name, 5, "RainbirdController ($name) - encode: extend arg_placeholders with keyName: \"$keyName\" charLength: $charLength";
+
+    ### extend arg_placeholder with a format entry for any parameter
+    ### the format entry is %H with leading 0s to reach the charlength from command_set
+    ### charlength 1: %01X 
+    ### charlength 2: %02X 
+    ### charlength 3: %03X 
+    $arg_placeholders .= sprintf("%%0%dX", $charLength);
+    $arg_placeholders_charLength += $charLength;
+    $args_found++
+  }
   
-  Log3 $name, 5, "RainbirdController ($name) - encode: $result";
+  Log3 $name, 5, "RainbirdController ($name) - encode: arg_placeholders \"" . $arg_placeholders . "\" arg_placeholders_charLength: " . $arg_placeholders_charLength . " arg_found: " . $args_found;
+
+  ### check if number of parameters equals to number of entries in dataset
+  if($args_found != $args_count)
+  {
+    Log3 $name, 3, "RainbirdController ($name) - encode: Error " . $args_count . " parameters given but " . $args_found . " parameters in dataset";
+    return undef;
+  }
+  
+  ### check if char lengths matches
+  if($command_set_charLength != $arg_placeholders_charLength)
+  {
+    Log3 $name, 3, "RainbirdController ($name) - encode: Error charLength: " . $command_set_charLength . " chars given but " . $arg_placeholders_charLength ." chars processed";
+    return undef;
+  }
+
+  my $result = sprintf("%s" . $arg_placeholders, @params);
+  my $result_charLength = length($result);
+
+  Log3 $name, 5, "RainbirdController ($name) - encode: result: \"$result\"";
+
+  ### check if char lengths matches
+  if($command_set_charLength != $result_charLength)
+  {
+    Log3 $name, 3, "RainbirdController ($name) - encode: Error charLength: " . $command_set_charLength . " chars given but " . $result_charLength . " chars processed";
+    return undef;
+  }
+
   return $result;
 }
 
@@ -2124,6 +2185,8 @@ sub RainbirdController_DecodeData($$)
     Log3 $name, 2, "RainbirdController ($name) - decode: ControllerResponse \"" . $response . "\" not found!";
     return undef;
   }
+
+  Log3 $name, 5, "RainbirdController ($name) - decode: data \"" . $data . "\"";
 
   # $cmd_template:
   #  "82" => 
@@ -2159,7 +2222,7 @@ sub RainbirdController_DecodeData($$)
       defined($value->{"position"}) and
       defined($value->{"length"}))
     {
-      Log3 $name, 5, "RainbirdController ($name) - decode: insert $key = " . hex(substr($data, $value->{"position"}, $value->{"length"})) . "\n";
+      Log3 $name, 5, "RainbirdController ($name) - decode: insert $key = " . hex(substr($data, $value->{"position"}, $value->{"length"}));
 
       $result{$key} = hex(substr($data, $value->{"position"}, $value->{"length"}));        
     }
@@ -2467,9 +2530,9 @@ The communication of this FHEM module competes with the communication of the app
     <li>DeletePassword - deletes the password from store</li>
     <li>Password - sets the password in store</li>
     <li>SetRainDelay - sets the delay in days</li>
-    <li>SynchronizeDateTime - synchronizes the internal time of the controller with fhem's time (comming soon)</li>
-    <li>SetTime - sets the internal time of the controller</li>
-    <li>SetDate - sets the internal date of the controller (comming soon )</li>
+    <li>SynchronizeDateTime - synchronizes the internal time of the controller with fhem's time</li>
+    <li>Time - sets the internal time of the controller</li>
+    <li>Date - sets the internal date of the controller</li>
     <li>StopIrrigation - stops irrigating</li>
     <li>Update - updates the device info and state</li>
   </ul>
@@ -2494,8 +2557,8 @@ The communication of this FHEM module competes with the communication of the app
     <li>DeviceInfo - get device info</li>
     <li>ModelAndVersion - get device model and version</li>
     <li>SerialNumber - get device serial number</li>
-    <li>CurrentTime - get internal device time</li>
-    <li>CurrentDate - get internal device date</li>
+    <li>Time - get internal device time</li>
+    <li>Date - get internal device date</li>
     <li>RainSensorState - get the state of the rainsensor</li>
     <li>RainDelay - get the delay in days</li>
     <li>CurrentIrrigation - get the current irrigation state</li>
