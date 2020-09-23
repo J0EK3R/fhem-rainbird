@@ -492,7 +492,7 @@ sub RainbirdController_Set($@)
 {
   my ( $hash, $name, $cmd, @args ) = @_;
 
-  Log3 $name, 3, "RainbirdController ($name) - Set was called cmd: $cmd";
+  Log3 $name, 4, "RainbirdController ($name) - Set was called cmd: $cmd";
 
   ### Password
   if ( lc $cmd eq lc 'Password' )

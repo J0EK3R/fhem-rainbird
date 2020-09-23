@@ -234,7 +234,7 @@ sub RainbirdZone_Attr(@)
     {
       $hash->{IRRIGATIONTIME} = $DefaultIrrigationTime;
     }
-    Log3 $name, 3, "RainbirdZone ($name) - set irrigationtime to" . $hash->{IRRIGATIONTIME} . " minutes";
+    Log3 $name, 3, "RainbirdZone ($name) - set irrigationtime to " . $hash->{IRRIGATIONTIME} . " minutes";
   }
 
   return undef;
