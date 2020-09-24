@@ -1,5 +1,9 @@
 # fhem-rainbird
-The FHEM module RainbirdController interacts with WiFi LNK module of the Rain Bird Irrigation System.
+The FHEM RainbirdController interacts with **LNK WiFi Module** of the Rain Bird Irrigation System.
+
+There is a FHEM modul **RainbirdController** which represents the irrigation controller device and handles the communication.
+And there is an underlying FHEM modul **RainbirdZone** wich represents an irrigation zone of the controller. There is one RainbirdZone device for each available irrigation zone.
+
 
 Currently you can
 * start/stop the irrigation
@@ -8,7 +12,8 @@ Currently you can
 * get/set internal date and time of the controller
 
 This module communicates directly with the WiFi module - it does not support the cloud.
-The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.
+
+*The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.*
 
 This perl code is ported from project https://github.com/jbarrancos/pyrainbird.
 
@@ -17,7 +22,7 @@ This perl code is ported from project https://github.com/jbarrancos/pyrainbird.
     define <name> RainbirdController <host>
 
 The RainbirdControler device is created in the room "Rainbird".
-If *autocreate* is enabled all available zones of your system are recognized automatically and created as RainbirdZone devices in the same room as the RainbirdController by FHEM.
+If **autocreate** is enabled all available zones of your system are recognized automatically and created as RainbirdZone devices in the same room as the RainbirdController by FHEM.
 
 Once a valid password is set RainbirdController initially reads the static infos from the controller and stores them as internals to the FHEM device.
 Then RainbirdController polls every interval for dynamic values like irrigation state, date&time, etc., stores them in readings and signals them to the underlying RainbirdZone devices.
