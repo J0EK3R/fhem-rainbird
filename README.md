@@ -17,7 +17,11 @@ This perl code is ported from project https://github.com/jbarrancos/pyrainbird.
     define <name> RainbirdController <host>
 
 The RainbirdControler device is created in the room "Rainbird".
-If autocreate is enabled the zones of your system are recognized automatically and created in FHEM.
+If *autocreate* is enabled all available zones of your system are recognized automatically and created as RainbirdZone devices in the same room as the RainbirdController by FHEM.
+
+Once a valid password is set RainbirdController initially reads the static infos from the controller and stores them as internals to the FHEM device.
+Then RainbirdController polls every interval for dynamic values like irrigation state, date&time, etc., stores them in readings and signals them to the underlying RainbirdZone devices.
+
 
 ### Example:
 
@@ -44,13 +48,13 @@ If autocreate is enabled the zones of your system are recognized automatically a
 
 ## set [expert mode]
 
-Expert mode is enabled by setting the attribute "expert" .
+Expert mode is enabled by setting the attribute "expert".
 
     IrrigateZone <zone> <minutes> - starts irrigating the <zone> for <minutes>
 
 ## get [expert mode]
 
-Expert mode is enabled by setting the attribute "expert"".
+Expert mode is enabled by setting the attribute "expert".
 
     DeviceState - get current device state
     DeviceInfo - get device info
