@@ -105,7 +105,7 @@ sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 
 ### statics
-my $VERSION = '1.3.0';
+my $VERSION = '1.3.1';
 
 ### hash with all known models
 my %KnownModels = (
@@ -559,6 +559,7 @@ sub RainbirdController_Set($@)
   elsif ( lc $cmd eq lc 'DeletePassword' )
   {
     RainbirdController_DeletePassword($hash);
+    RainbirdController_TimerRestart($hash);
   } 
   
   ### StopIrrigation
@@ -2065,17 +2066,15 @@ sub RainbirdController_ErrorHandling($$$)
   my $request_id  = $param->{request_id};
   my $leftRetries = $param->{leftRetries};
   my $retryCallback = $param->{retryCallback};
-  my $error = 0;
+  my $errorMsg = "";
 
   ### check error variable
   if ( defined($err) and 
     $err ne "" )
   {
     Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: Error: " . $err . " data: " . $data . "";
-
-    readingsSingleUpdate( $hash, 'state', 'error ' . $err, 1 );
-
-    return;
+    
+    $errorMsg = 'error ' . $err;
   }
   
   ### check code
@@ -2087,24 +2086,23 @@ sub RainbirdController_ErrorHandling($$$)
     
     if( $param->{code} == 403 ) ### Forbidden
     {
-      readingsSingleUpdate( $hash, 'state', 'wrong password', 1 );
-      return; # no retries
+      $errorMsg = 'wrong password';
+      $leftRetries = 0; # no retry
     }
     elsif( $param->{code} == 503 ) ### Service Unavailable
     {
-      $error++; # retry
+      $errorMsg = 'error ' . $param->{code};
     }
     else
     {
-      readingsSingleUpdate( $hash, 'state', 'error ' . $param->{code}, 1 );
-      $error++; # retry
+      $errorMsg = 'error ' . $param->{code};
     }
   }
 
   Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: RequestID: " . $request_id . " data: " . $data . "";
 
   ### no error: process response
-  if($error == 0)
+  if($errorMsg eq "")
   {
     RainbirdController_ResponseProcessing( $param, $data );
   }
@@ -2112,14 +2110,16 @@ sub RainbirdController_ErrorHandling($$$)
   elsif(defined($retryCallback) and # is retryCallbeck defined
     $leftRetries > 0)               # are there any left retries
   {
-    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: retry " . $leftRetries;
+    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: retry " . $leftRetries . " Error: " . $errorMsg;
 
     ### call retryCallback with decremented number of left retries
     $retryCallback->($leftRetries - 1, $retryCallback);
   }
   else
   {
-    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: no retries left";
+    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: no retries left Error: " . $errorMsg;
+
+    readingsSingleUpdate( $hash, 'state', $errorMsg, 1 );
   }
 }
 
