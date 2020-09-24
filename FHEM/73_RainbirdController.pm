@@ -81,8 +81,12 @@ sub RainbirdController_IrrigateZone($$$;$);
 sub RainbirdController_TestZone($$;$);
 sub RainbirdController_SetProgram($$;$);
 sub RainbirdController_StopIrrigation($;$);
-sub RainbirdController_GetZoneFromRaw($);
+
+### for testing purposes only
+sub RainbirdController_TestCMD($$$;$);
+
 ### internal tool functions
+sub RainbirdController_GetZoneFromRaw($);
 sub RainbirdController_GetAvailableZoneCountFromRaw($);
 sub RainbirdController_GetAvailableZoneMaskFromRaw($);
 sub RainbirdController_Command($$$@);
@@ -101,7 +105,7 @@ sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 
 ### statics
-my $VERSION = '1.1.0';
+my $VERSION = '1.2.0';
 
 ### hash with all known models
 my %KnownModels = (
@@ -123,7 +127,7 @@ my %ControllerCommands = (
     "AvailableStationsRequest" => {"command" => "03", "parameter1" => 2, "response" => "83", "length" => 2},
     "CommandSupportRequest" => {"command" => "04", "parameter1" => 2, "response" => "84", "length" => 2},
     "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
-#    "SupportedRequest" => {"command" => "06", "response" => "85", "length" => 1},
+    "TestRequest" => {"command" => "06", "response" => "85", "length" => 1},
 #    "SupportedRequest" => {"command" => "07", "response" => "85", "length" => 1},
     "CurrentTimeGetRequest" => {"command" => "10", "response" => "90", "length" => 1},
     "CurrentTimeSetRequest" => {"command" => "11", "parameter1" => 2, "parameter2" => 2, "parameter3" => 2, "response" => "01", "length" => 4},
@@ -619,6 +623,22 @@ sub RainbirdController_Set($@)
     RainbirdController_GetDeviceInfo($hash, $callback );
   } 
 
+  ### TestCMD
+  elsif ( lc $cmd eq lc 'TestCMD' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+    
+    return "usage: $cmd <command> [<arg1>, <arg2>]"
+      if ( @args < 1 );
+
+    ### first entry is commandstring
+    ### others are parameters
+    my $command = shift(@args);
+    
+    RainbirdController_TestCMD($hash, $command, \@args);
+  } 
+
   ### ClearReadings
   elsif ( lc $cmd eq lc 'ClearReadings' )
   {
@@ -643,6 +663,7 @@ sub RainbirdController_Set($@)
       $list .= " Time";
       $list .= " Update:noArg";
       $list .= " IrrigateZone" if($hash->{EXPERTMODE});
+      $list .= " TestCMD" if($hash->{EXPERTMODE});
     }
     else
     {
@@ -1759,6 +1780,44 @@ sub RainbirdController_StopIrrigation($;$)
 }
 
 #####################################
+# TestCMD
+#####################################
+sub RainbirdController_TestCMD($$$;$)
+{
+  my ( $hash, $command, $args, $callback ) = @_;
+  my $name = $hash->{NAME};
+  
+  Log3 $name, 4, "RainbirdController ($name) - testCMD";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    my ( $result ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - testCMD lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      readingsBulkUpdate( $hash, 'testCMDResult', encode_json($result), 1 );
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - testCMD callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command, @{$args} );
+}
+
+#####################################
 # GetZoneFromRaw
 # Gets the active zone from raw value
 #####################################
@@ -2125,7 +2184,7 @@ sub RainbirdController_EncodeData($$@)
       return undef;
     }
 
-    Log3 $name, 5, "RainbirdController ($name) - encode: extend arg_placeholders with keyName: \"$keyName\" charLength: $charLength";
+    Log3 $name, 5, "RainbirdController ($name) - encode: extend arg_placeholders with keyName: \"" . $keyName . "\" charLength: " . $charLength . " value: \"" . $args[$index - 1] . "\"";
 
     ### extend arg_placeholder with a format entry for any parameter
     ### the format entry is %H with leading 0s to reach the charlength from command_set

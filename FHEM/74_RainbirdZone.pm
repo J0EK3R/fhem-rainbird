@@ -272,7 +272,7 @@ sub RainbirdZone_Set($@)
 
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 3, "RainbirdZone ($name) - Set was called: cmd= $cmd";
+  Log3 $name, 4, "RainbirdZone ($name) - Set was called: cmd= $cmd";
 
   ### IrrigateZone
   if ( lc $cmd eq 'irrigatezone' )
