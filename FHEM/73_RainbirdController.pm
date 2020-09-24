@@ -105,7 +105,7 @@ sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 
 ### statics
-my $VERSION = '1.2.0';
+my $VERSION = '1.3.0';
 
 ### hash with all known models
 my %KnownModels = (
@@ -118,8 +118,8 @@ my %KnownModels = (
 ###	command string:           "command" => "13", 
 ### first parameter charlen:  "parameter1" => 2, 
 ### second parameter charlen: "parameter2" => 1, "
-### thrid parameter charlen:  "parameter3" => 3, 
-### response number:          "response" => "01", 
+### third parameter charlen:  "parameter3" => 3, 
+### response number string:   "response" => "01", 
 ### total bytelength:         "length" => 4
 ###                           },
 my %ControllerCommands = (
@@ -183,6 +183,8 @@ my %ControllerResponses = (
 my $_DEFAULT_PAGE = 0;
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
+my $DefaultTimeout = 20;
+my $DefaultRetries = 3;
 my $BLOCK_SIZE = 16;
 my $INTERRUPT = "\x00";
 my $PAD = "\x10";
@@ -223,6 +225,8 @@ sub RainbirdController_Initialize($)
     'expert:1 ' . 
     'interval ' . 
     'disabledForIntervals ' . 
+    'timeout ' . 
+    'retry ' . 
     $readingFnAttributes;
 
   foreach my $d ( sort keys %{ $modules{RainbirdController}{defptr} } )
@@ -256,6 +260,8 @@ sub RainbirdController_Define($$)
   $hash->{VERSION}                = $VERSION;
   $hash->{INTERVAL}               = $DefaultInterval;
   $hash->{RETRYINTERVAL}          = $DefaultRetryInterval;
+  $hash->{TIMEOUT}                = $DefaultTimeout;
+  $hash->{RETRIES}                = $DefaultRetries;
   $hash->{NOTIFYDEV}              = "global,$name";
   $hash->{HOST}                   = $host;
   $hash->{EXPERTMODE}             = 0;
@@ -398,13 +404,53 @@ sub RainbirdController_Attr(@)
     } 
     elsif ( $cmd eq 'del' )
     {
-      Log3 $name, 3, "RainbirdController ($name) - delete user interval and set default: $hash->{INTERVAL}";
-
       RainbirdController_TimerStop($hash);
       
       $hash->{INTERVAL} = $DefaultInterval;
 
+      Log3 $name, 3, "RainbirdController ($name) - delete user interval and set default: $hash->{INTERVAL}";
+
       RainbirdController_TimerRestart($hash);
+    }
+  }
+
+  ### Attribute "timeout"
+  elsif ( $attrName eq 'timeout' )
+  {
+    if ( $cmd eq 'set' )
+    {
+      Log3 $name, 3, "RainbirdController ($name) - set timeout: $attrVal";
+
+      return 'timeout must be greater than 0'
+        unless ( $attrVal > 0 );
+
+      $hash->{TIMEOUT} = $attrVal;
+    } 
+    elsif ( $cmd eq 'del' )
+    {
+      $hash->{TIMEOUT} = $DefaultTimeout;
+
+      Log3 $name, 3, "RainbirdController ($name) - delete user timeout and set default: $hash->{TIMEOUT}";
+    }
+  }
+
+  ### Attribute "retries"
+  elsif ( $attrName eq 'retries' )
+  {
+    if ( $cmd eq 'set' )
+    {
+      Log3 $name, 3, "RainbirdController ($name) - set retries: $attrVal";
+
+      return 'retries must be greater or equal than 0'
+        unless ( $attrVal >= 0 );
+
+      $hash->{RETRIES} = $attrVal;
+    } 
+    elsif ( $cmd eq 'del' )
+    {
+      $hash->{RETRIES} = $DefaultRetries;
+
+      Log3 $name, 3, "RainbirdController ($name) - delete user retries and set default: $hash->{RETRIES}";
     }
   }
 
@@ -1980,23 +2026,32 @@ sub RainbirdController_Request($$$$)
   my $header = $HEAD;
 
   Log3 $name, 5, "RainbirdController ($name) - Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $method";
-    
-  HttpUtils_NonblockingGet(
+  
+  my $sendReceive = sub ($;$)
   {
-    hash      => $hash,
+  	my ( $leftRetries, $retryCallback ) = @_;
+  	
+    HttpUtils_NonblockingGet(
+    {
+      hash      => $hash,
     
-    url       => $uri,
-    method    => $method,
-    header    => $header,
-    data      => $payload,
-    timeout   => 20,
-    doTrigger => 1,
-    callback  => \&RainbirdController_ErrorHandling,
+      url       => $uri,
+      method    => $method,
+      header    => $header,
+      data      => $payload,
+      timeout   => $hash->{TIMEOUT},
+      doTrigger => 1,
+      callback  => \&RainbirdController_ErrorHandling,
     
-    request_id => $request_id,
-    commandset => $command_set,
-    resultCallback => $resultCallback,
-  });
+      request_id => $request_id,
+      commandset => $command_set,
+      leftRetries => $leftRetries,
+      retryCallback => $retryCallback,
+      resultCallback => $resultCallback,
+    });
+  };
+  
+  $sendReceive->($hash->{RETRIES}, $sendReceive)
 }
 
 #####################################
@@ -2008,6 +2063,9 @@ sub RainbirdController_ErrorHandling($$$)
   my $hash  = $param->{hash};
   my $name  = $hash->{NAME};
   my $request_id  = $param->{request_id};
+  my $leftRetries = $param->{leftRetries};
+  my $retryCallback = $param->{retryCallback};
+  my $error = 0;
 
   ### check error variable
   if ( defined($err) and 
@@ -2030,19 +2088,39 @@ sub RainbirdController_ErrorHandling($$$)
     if( $param->{code} == 403 ) ### Forbidden
     {
       readingsSingleUpdate( $hash, 'state', 'wrong password', 1 );
+      return; # no retries
+    }
+    elsif( $param->{code} == 503 ) ### Service Unavailable
+    {
+      $error++; # retry
     }
     else
     {
       readingsSingleUpdate( $hash, 'state', 'error ' . $param->{code}, 1 );
+      $error++; # retry
     }
-    
-    return;
   }
 
   Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: RequestID: " . $request_id . " data: " . $data . "";
 
   ### no error: process response
-  RainbirdController_ResponseProcessing( $param, $data );
+  if($error == 0)
+  {
+    RainbirdController_ResponseProcessing( $param, $data );
+  }
+  ### error: retries left
+  elsif(defined($retryCallback) and # is retryCallbeck defined
+    $leftRetries > 0)               # are there any left retries
+  {
+    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: retry " . $leftRetries;
+
+    ### call retryCallback with decremented number of left retries
+    $retryCallback->($leftRetries - 1, $retryCallback);
+  }
+  else
+  {
+    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: no retries left";
+  }
 }
 
 #####################################
@@ -2631,6 +2709,8 @@ The communication of this FHEM module competes with the communication of the app
   <ul>
     <li>disable - disables the device</li>
     <li>interval - interval of polling in seconds (Default=60)</li>
+    <li>timeout - timeout for expected response in seconds (Default=20)</li>
+    <li>retries - number of retries (Default=3)</li>
     <li>expert - switches to expert mode</li>
   </ul>
 </ul>
