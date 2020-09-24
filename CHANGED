@@ -1,3 +1,3 @@
 FHEM Rainbird last changes:
 2020-09-24
- - v1.2.0 new function RainbirdController_TestCMD
+ - v1.3.0 retry-mechanism implemented
