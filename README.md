@@ -75,7 +75,7 @@ Expert mode is enabled by setting the attribute "expert"".
 https://wiki.fhem.de/wiki/Update
 
 ## add repository to fhem
-update add https://raw.githubusercontent.com/J0EK3R/fhem-rainbird/master/controls_rainbird.txt
+    update add https://raw.githubusercontent.com/J0EK3R/fhem-rainbird/master/controls_rainbird.txt
 
 ## list all repositories
-update list
+    update list
