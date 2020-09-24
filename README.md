@@ -3,7 +3,7 @@ The FHEM module RainbirdController interacts with WiFi LNK module of the Rain Bi
 
 Currently you can
 * start/stop the irrigation
-* get the currently active zone.
+* get the current active zone
 * get the available zones of the controller model
 * get/set internal date and time of the controller
 
@@ -24,8 +24,8 @@ If autocreate is enabled the zones of your system are recognized automatically a
     define RainbirdController RainbirdController rainbird.fritz.box
 
 ## Readings
-    currentDate - current internal date of the controler
-    currentTime - current internal time of the controler
+    currentDate - current internal date of the controller
+    currentTime - current internal time of the controller
     irrigationState - always 1
     rainDelay - irrigation delay in days
     rainSensorState - state of the rain sensor
@@ -69,6 +69,8 @@ Expert mode is enabled by setting the attribute "expert"".
 
     disable - disables the device
     interval - interval of polling in seconds (Default=60)
+    timeout - timeout for expected response in seconds (Default=20)
+    retries - number of retries (Default=3)
     expert - switches to expert mode
 
 # fhem update wiki
