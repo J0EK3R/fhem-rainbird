@@ -40,6 +40,13 @@ eval "use Digest::SHA qw(sha256);1" or $missingModul .= 'Digest::SHA ';
 eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
+### statics
+my $VERSION = '1.5.0';
+my $DefaultInterval = 60;
+my $DefaultRetryInterval = 60;
+my $DefaultTimeout = 20;
+my $DefaultRetries = 3;
+
 ### Forward declarations
 sub RainbirdController_Initialize($);
 sub RainbirdController_Define($$);
@@ -105,9 +112,6 @@ sub RainbirdController_ReadPassword($);
 sub RainbirdController_DeletePassword($);
 sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
-
-### statics
-my $VERSION = '1.4.0';
 
 ### hash with all known models
 my %KnownModels = (
@@ -209,11 +213,7 @@ my %ControllerResponses = (
     "CC" => {"length" => 16, "type" => "CombinedControllerStateResponse", "hour" => {"position" => 2, "length" => 2}, "minute" => {"position" => 4, "length" => 2}, "second" => {"position" => 6, "length" => 2}, "day" => {"position" => 8, "length" => 2}, "month" => {"position" => 10, "length" => 1}, "year" => {"position" => 11, "length" => 3}, "delaySetting" => {"position" => 14, "length" => 4}, "sensorState" => {"position" => 18, "length" => 2}, "irrigationState" => {"position" => 20, "length" => 2}, "seasonalAdjust" => {"position" => 22, "length" => 4}, "remainingRuntime" => {"position" => 26, "length" => 4}, "activeStation" => {"position" => 30, "length" => 2} }
 );
 
-my $_DEFAULT_PAGE = 0;
-my $DefaultInterval = 60;
-my $DefaultRetryInterval = 60;
-my $DefaultTimeout = 20;
-my $DefaultRetries = 3;
+my $DEFAULT_PAGE = 0;
 my $BLOCK_SIZE = 16;
 my $INTERRUPT = "\x00";
 my $PAD = "\x10";
@@ -224,7 +224,7 @@ my $HEAD =
     "Accept-Encoding: gzip, deflate\n" .
     "User-Agent: RainBird/2.0 CFNetwork/811.5.4 Darwin/16.7.0\n" .
     "Accept: */*\n" .
-    "Connection: keep-alive\n" .
+#    "Connection: keep-alive\n" .
     "Content-Type: application/octet-stream";
 
 #####################################
@@ -251,7 +251,7 @@ sub RainbirdController_Initialize($)
 
   $hash->{AttrList} = 
     'disable:1 ' . 
-    'expert:1 ' . 
+    'expert:1,0 ' . 
     'interval ' . 
     'disabledForIntervals ' . 
     'timeout ' . 
@@ -286,21 +286,24 @@ sub RainbirdController_Define($$)
   RainbirdController_TimerStop($hash);
 
   ### some internal settings
-  $hash->{VERSION}                = $VERSION;
-  $hash->{INTERVAL}               = $DefaultInterval;
-  $hash->{RETRYINTERVAL}          = $DefaultRetryInterval;
-  $hash->{TIMEOUT}                = $DefaultTimeout;
-  $hash->{RETRIES}                = $DefaultRetries;
-  $hash->{NOTIFYDEV}              = "global,$name";
-  $hash->{HOST}                   = $host;
-  $hash->{EXPERTMODE}             = 0;
-  $hash->{"ZONESAVAILABLECOUNT"}  = 0; # hidden internal with raw integer value
-  $hash->{"ZONESAVAILABLEMASK"}   = 0; # hidden internal with raw integer value
-  $hash->{"ZONEACTIVE"}           = 0; # hidden internal with raw integer value
-  $hash->{"ZONEACTIVEMASK"}       = 0; # hidden internal with raw integer value
-  $hash->{REQUESTID}              = 0;
-  $hash->{TIMERON}                = 0;
-  
+  $hash->{VERSION}                       = $VERSION;
+  $hash->{INTERVAL}                      = $DefaultInterval;
+  $hash->{RETRYINTERVAL}                 = $DefaultRetryInterval;
+  $hash->{TIMEOUT}                       = $DefaultTimeout;
+  $hash->{RETRIES}                       = $DefaultRetries;
+  $hash->{NOTIFYDEV}                     = "global,$name";
+  $hash->{HOST}                          = $host;
+  $hash->{EXPERTMODE}                    = 0;
+  $hash->{"ZONESAVAILABLECOUNT"}         = 0; # 
+  $hash->{"ZONESAVAILABLEMASK"}          = 0; # 
+  $hash->{"ZONEACTIVE"}                  = 0; # 
+  $hash->{"ZONEACTIVEMASK"}              = 0; # 
+  $hash->{REQUESTID}                     = 0;
+  $hash->{TIMERON}                       = 0;
+  $hash->{helper}{RESPONSESUCCESSCOUNT}  = 0; # statistics
+  $hash->{helper}{RESPONSEERRORCOUNT}    = 0; # statistics
+  $hash->{helper}{RESPONSETOTALTIMESPAN} = 0; # statistics
+    
   ### set attribute defaults
   CommandAttr( undef, $name . ' room Rainbird' )
     if ( AttrVal( $name, 'room', 'none' ) eq 'none' );
@@ -1217,7 +1220,7 @@ sub RainbirdController_GetAvailableZones($;$)
   }; 
     
   # send command
-  RainbirdController_Command($hash, $resultCallback, $command, $_DEFAULT_PAGE );
+  RainbirdController_Command($hash, $resultCallback, $command, $DEFAULT_PAGE );
 }
 
 #####################################
@@ -1671,7 +1674,7 @@ sub RainbirdController_GetIrrigationState($;$)
   }; 
     
   # send command
-  RainbirdController_Command($hash, $resultCallback, $command, $_DEFAULT_PAGE );
+  RainbirdController_Command($hash, $resultCallback, $command, $DEFAULT_PAGE );
 }
 
 #####################################
@@ -2153,6 +2156,7 @@ sub RainbirdController_Request($$$$)
   my $method = 'POST';
   my $payload = $encrypt_data;
   my $header = $HEAD;
+  my $request_timestamp = gettimeofday();
 
   Log3 $name, 5, "RainbirdController ($name) - Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $method";
   
@@ -2173,8 +2177,9 @@ sub RainbirdController_Request($$$$)
       callback  => \&RainbirdController_ErrorHandling,
     
       request_id => $request_id,
-      expectedResponse_id => $expectedResponse_id,
+      request_timestamp => $request_timestamp,
       
+      expectedResponse_id => $expectedResponse_id,
       sendData => $send_data,
       
       leftRetries => $leftRetries,
@@ -2197,6 +2202,10 @@ sub RainbirdController_ErrorHandling($$$)
   my $request_id  = $param->{request_id};
   my $leftRetries = $param->{leftRetries};
   my $retryCallback = $param->{retryCallback};
+
+  my $response_timestamp = gettimeofday();
+  my $request_timestamp = $param->{request_timestamp};
+  my $requestResponse_timespan = $response_timestamp - $request_timestamp;
   my $errorMsg = "";
 
   ### check error variable
@@ -2235,6 +2244,12 @@ sub RainbirdController_ErrorHandling($$$)
   ### no error: process response
   if($errorMsg eq "")
   {
+  	$hash->{helper}{RESPONSESUCCESSCOUNT}++;
+  	$hash->{helper}{RESPONSETOTALTIMESPAN} += $requestResponse_timespan;
+
+    $hash->{RESPONSESUCCESSCOUNT} = $hash->{helper}{RESPONSESUCCESSCOUNT};
+    $hash->{RESPONSEAVERAGETIMESPAN} = $hash->{helper}{RESPONSETOTALTIMESPAN} / $hash->{helper}{RESPONSESUCCESSCOUNT};
+  	
     RainbirdController_ResponseProcessing( $param, $data );
   }
   ### error: retries left
@@ -2249,6 +2264,9 @@ sub RainbirdController_ErrorHandling($$$)
   else
   {
     Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: no retries left Error: " . $errorMsg;
+
+    $hash->{helper}{RESPONSEERRORCOUNT}++;
+    $hash->{RESPONSEERRORCOUNT} = $hash->{helper}{RESPONSEERRORCOUNT};
 
     readingsSingleUpdate( $hash, 'state', $errorMsg, 1 );
   }
@@ -2806,9 +2824,9 @@ The communication of this FHEM module competes with the communication of the app
   <ul>
     <li>currentDate - current internal date of the controller</li>
     <li>currentTime - current internal time of the controller</li>
-    <li>irrigationState - always 1</li>
+    <li>irrigationState - don't know: always 1</li>
     <li>rainDelay - irrigation delay in days</li>
-    <li>rainSensorState - state of the rain sensor</li>
+    <li>rainSensorState - state of the rain sensor: 1 irrigation suspended, 0 no rain detected</li>
     <li>zoneActive - the current active zone</li>
   </ul>
   <br><br>
