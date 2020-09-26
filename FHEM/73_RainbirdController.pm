@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.5.0';
+my $VERSION = '1.5.1';
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
 my $DefaultTimeout = 20;
@@ -2786,107 +2786,147 @@ sub RainbirdController_GetDateSpec($)
 1;
 
 =pod
-
 =item device
-=item summary Module to interact with WiFi LNK module of the Rain Bird Irrigation System
-
+=item summary module to interact with LNK WiFi module of the Rain Bird Irrigation System
 =begin html
 
-<a name="RainbirdController"></a>
-<h3>RainbirdController</h3>
-<br>
-In combination with the FHEM module RainbirdZone this module interacts with WiFi LNK module of the <b>Rain Bird Irrigation System</b>.<br>
-<br>
-You can start/stop the irrigation and get the currently active zone.<br>
-<br>
-This module communicates directly with the WiFi module - it does not support the cloud.<br>
-The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.
-<br>
-<ul>
-  <a name="RainbirdControllerdefine"></a>
-  <b>Define</b>
-  <br><br>
-  <code>define &lt;name&gt; RainbirdController &lt;host&gt;</code>
-  <br><br>
-  The RainbirdController device is created in the room "Rainbird".<br>
-  If autocreate is enabled the zones of your system are recognized automatically and created in FHEM.
-  <br><br>
-  Example:
+  <a name="RainbirdController"></a><h3>RainbirdController</h3>
   <ul>
+    In combination with the FHEM module RainbirdZone this module interacts with <b>LNK WiFi module</b> of the <b>Rain Bird Irrigation System</b>.<br>
     <br>
-    <code>define RainbirdController RainbirdController rainbird.fritz.box</code>
+    You can start/stop the irrigation and get the currently active zone.<br>
+    <br>
+      <b>Notes</b>
+      <ul>
+        <li>This module communicates directly with the <b>LNK WiFi module</b> - it does not support the cloud.
+        </li>
+        <li>The communication of this FHEM module competes with the communication of the app - maybe the app signals a communication error.
+        </li>
+      </ul>
+    <br>
+    <a name="RainbirdControllerdefine"></a><b>Define</b>
+    <ul>
+      <code><B>define &lt;name&gt; RainbirdController &lt;host&gt;</B></code>
+      <br><br>
+      Example:<br>
+      <ul>
+        <code>
+        define RainbirdController RainbirdController rainbird.fritz.box<br>
+        <br>
+        </code>
+      </ul>
+    </ul><br>
+    <a name="RainbirdControllerset"></a><b>Set</b>
+    <ul>
+      <li><B>ClearReadings</B><a name="RainbirdControllerClearReadings"></a><br>
+        Clears all readings.
+      </li>
+      <li><B>Date</B><a name="RainbirdControllerDate"></a><br>
+        Sets the internal date of the controller.<br>
+        Format: YYYY-MM-DD
+      </li>
+      <li><B>DeletePassword</B><a name="RainbirdControllerDeletePassword"></a><br>
+        Deletes the password from store.
+      </li>
+      <li><B>FactoryReset</B><a name="RainbirdControllerFactoryReset"></a><br>
+        Reset all parameters of the device to default factory settings.
+      </li>
+      <li><B>IrrigateZone</B><a name="RainbirdControllerIrrigateZone"></a><br>
+        Starts irrigating a zone.
+      </li>
+      <li><B>Password</B><a name="RainbirdControllerPassword"></a><br>
+        Sets the password in store.
+      </li>
+      <li><B>RainDelay</B><a name="RainbirdControllerRainDelay"></a><br>
+        Sets the delay in days.
+      </li>
+      <li><B>StopIrrigation</B><a name="RainbirdControllerStopIrrigation"></a><br>
+        Stops the irrigating of all zones.
+      </li>
+      <li><B>SynchronizeDateTime</B><a name="RainbirdControllerSynchronizeDateTime"></a><br>
+        Synchronizes the internal date and time of the controller with fhem's time.
+      </li>
+      <li><B>TestCMD</B><a name="RainbirdControllerTestCMD"></a><br>
+        Tests a defined command<br>
+        Format: HH:MM or HH:MM:SS
+      </li>
+      <li><B>TestRAW</B><a name="RainbirdControllerTestRAW"></a><br>
+        Tests a raw command
+      </li>
+      <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
+        Sets the internal time of the controller<br>
+        Format: HH:MM or HH:MM:SS
+      </li>
+      <li><B>Update</B><a name="RainbirdControllerUpdate"></a><br>
+        Updates the device info and state.
+      </li>
+    </ul>
+    <br>
+    <a name="RainbirdControllerget"></a><b>Get</b><br>
+    <ul>
+      <li><B>DeviceState</B><a name="RainbirdControllerDeviceState"></a><br>
+        Get current device state.
+      </li>
+      <li><B>DeviceInfo</B><a name="RainbirdControllerDeviceInfo"></a><br>
+        Get current device info.
+      </li>
+      <li><B>ModelAndVersion</B><a name="RainbirdControllerModelAndVersion"></a><br>
+        Get device model and version.
+      </li>
+      <li><B>AvailableZones</B><a name="RainbirdControllerAvailableZones"></a><br>
+        Gets all available zones.
+      </li>
+      <li><B>SerialNumber</B><a name="RainbirdControllerSerialNumber"></a><br>
+        Get device serial number.
+      </li>
+      <li><B>Date</B><a name="RainbirdControllerDate"></a><br>
+        Get internal device date.
+      </li>
+      <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
+        Get internal device time.
+      </li>
+      <li><B>RainSensorState</B><a name="RainbirdControllerRainSensorState"></a><br>
+        Get the state of the rainsensor.
+      </li>
+      <li><B>RainDelay</B><a name="RainbirdControllerRainDelay"></a><br>
+        Get the delay in days.
+      </li>
+      <li><B>CurrentIrrigation</B><a name="RainbirdControllerCurrentIrrigation"></a><br>
+        Get the current irrigation state.
+      </li>
+      <li><B>IrrigationState</B><a name="RainbirdControllerIrrigationState"></a><br>
+        Get the current irrigation state.
+      </li>
+      <li><B>CommandSupport</B><a name="RainbirdControllerCommandSupport"></a><br>
+        Get supported command info.
+      </li>
+    </ul><br>
+    <a name="RainbirdControllerattr"></a><b>Attributes</b><br>
+    <ul>
+      <li><a name="RainbirdControllerdisable">disable</a><br>
+        Disables the device.<br>
+      </li>
+      <li><a name="RainbirdControllerinterval">interval</a><br>
+        Interval of polling in seconds (Default=60).<br>
+      </li>
+      <li><a name="RainbirdControllertimeout">timeout</a><br>
+        Timeout for expected response in seconds (Default=20)<br>
+      </li>
+      <li><a name="RainbirdControllerretries">retries</a><br>
+        Number of retries (Default=3)<br>
+      </li>
+      <li><a name="RainbirdControllerexpert">expert</a><br>
+        Switches to expert mode.<br>
+      </li>
+    </ul><br>
+    <a name="RainbirdControllerinternals"></a><b>Internals</b>
+    <ul>
+      <li><B>EXPERTMODE</B><br>
+        gives information if device is in expert mode<br>
+      </li>
+    </ul><br>
     <br>
   </ul>
-  <br><br>
-  <a name="RainbirdControllerreadings"></a>
-  <b>Readings</b>
-  <br><br>
-  <ul>
-    <li>currentDate - current internal date of the controller</li>
-    <li>currentTime - current internal time of the controller</li>
-    <li>irrigationState - don't know: always 1</li>
-    <li>rainDelay - irrigation delay in days</li>
-    <li>rainSensorState - state of the rain sensor: 1 irrigation suspended, 0 no rain detected</li>
-    <li>zoneActive - the current active zone</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdControllerset"></a>
-  <b>set</b>
-  <br><br>
-  <ul>
-    <li>ClearReadings - clears all readings</li>
-    <li>DeletePassword - deletes the password from store</li>
-    <li>Password - sets the password in store</li>
-    <li>RainDelay - sets the delay in days</li>
-    <li>StopIrrigation - stops irrigating</li>
-    <li>SynchronizeDateTime - synchronizes the internal date and time of the controller with fhem's time</li>
-    <li>Date - sets the internal date of the controller - format YYYY-MM-DD</li>
-    <li>Time - sets the internal time of the controller- format HH:MM or HH:MM:SS</li>
-    <li>Update - updates the device info and state</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdControllerexpertset"></a>
-  <b>set [expert mode]</b>
-  <br><br>
-  Expert mode is enabled by setting the attribute "expert".
-  <br><br>
-  <ul>
-    <li>IrrigateZone - starts irrigating a zone</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdControllerexpertget"></a>
-  <b>get [expert mode]</b>
-  <br><br>
-  Expert mode is enabled by setting the attribute "expert"".
-  <br><br>
-  <ul>
-    <li>DeviceState - get current device state</li>
-    <li>DeviceInfo - get device info</li>
-    <li>ModelAndVersion - get device model and version</li>
-    <li>AvailableZones - gets all available zones</li>
-    <li>SerialNumber - get device serial number</li>
-    <li>Date - get internal device date</li>
-    <li>Time - get internal device time</li>
-    <li>RainSensorState - get the state of the rainsensor</li>
-    <li>RainDelay - get the delay in days</li>
-    <li>CurrentIrrigation - get the current irrigation state</li>
-    <li>IrrigationState - get the current irrigation state</li>
-    <li>CommandSupport - get supported command info</li>
-    <li>Factory Reset - reset all parameters of the device to default factory settings</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdControllerattributes"></a>
-  <b>Attributes</b>
-  <br><br>
-  <ul>
-    <li>disable - disables the device</li>
-    <li>interval - interval of polling in seconds (Default=60)</li>
-    <li>timeout - timeout for expected response in seconds (Default=20)</li>
-    <li>retries - number of retries (Default=3)</li>
-    <li>expert - switches to expert mode</li>
-  </ul>
-</ul>
-
 =end html
 
 =cut

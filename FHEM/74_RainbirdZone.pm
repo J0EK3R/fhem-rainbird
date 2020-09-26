@@ -52,7 +52,7 @@ sub RainbirdZone_GetZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.0.1';
+my $VERSION = '1.5.1';
 
 my $DefaultIrrigationTime = 10;
 
@@ -526,57 +526,50 @@ sub RainbirdZone_GetZoneMask($)
 1;
 
 =pod
-
 =item device
-=item summary    Modul representing an irrigation zone of a Rainbird Controller
-
+=item summary Modul representing an irrigation zone of a Rainbird Controller
 =begin html
 
-<a name="RainbirdZone"></a>
-<h3>RainbirdZone</h3>
-<br>
-In combination with RainbirdController this FHEM module represents an irrigation zone of the <b>Rain Bird Irrigation System</b>.<br>
-<br>
-Once the RainbirdController device is created and connected and autocreate is enabled all available irrigation zones are automatically recognized and created in FHEM.<br>
-<br>
-<ul>
-  <a name="RainbirdControllerdefine"></a>
-  <b>Define</b>
-  <br><br>
-  <code>define &lt;name&gt; RainbirdZone &lt;ZoneId&gt;</code>
-  <br><br>
-  Example:
+  <a name="RainbirdZone"></a><h3>RainbirdZone</h3>
   <ul>
+    In combination with RainbirdController this FHEM module represents an irrigation zone of the <b>Rain Bird Irrigation System</b>.<br>
     <br>
-    <code>define RainbirdZone.01 RainbirdZone 1</code>
+    Once the RainbirdController device is created and connected and autocreate is enabled all available irrigation zones are automatically recognized and created in FHEM.<br>
+    <br>
+    <a name="RainbirdZonedefine"></a><b>Define</b>
+    <ul>
+      <code><B>define &lt;name&gt; RainbirdZone &lt;ZoneId&gt;<br></B></code>
+      <br><br>
+      Example:<br>
+      <ul>
+        <code>
+        define RainbirdZone.01 RainbirdZone 1<br>
+        <br>
+        </code>
+      </ul>
+    </ul><br>
+    <a name="RainbirdZoneset"></a><b>Set</b>
+    <ul>
+      <li><B>ClearReadings</B><a name="RainbirdZoneClearReadings"></a><br>
+        Clears all readings.
+      </li>
+      <li><B>IrrigateZone [&lt;minutes&gt;]</B><a name="RainbirdZoneIrrigateZone"></a><br>
+        Starts irrigating the zone for [minutes] or attribute <b>irrigationTime</b>
+      </li>
+      <li><B>StopIrrigation</B><a name="RainbirdZoneStopIrrigation"></a><br>
+        Stops irrigating the zone.
+      </li>
+    </ul><br>
+    <a name="RainbirdZoneattr"></a><b>Attributes</b>
+    <ul>
+      <li><a name="RainbirdZonedisable">disable</a><br>
+        Disables the device.<br>
+      </li>
+      <li><a name="RainbirdZoneirrigationTime">irrigationTime</a><br>
+        Default irrigation time in minutes (used by command <b>IrrigateZone</b> without parameter)<br>
+      </li>
+    </ul><br>
     <br>
   </ul>
-  <br><br>
-  <a name="RainbirdZonereadings"></a>
-  <b>Readings</b>
-  <br><br>
-  <ul>
-    <li>available - 1 when available else 0</li>
-    <li>irrigating - 1 when irrigating else 0</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdZoneattributes"></a>
-  <b>Attributes</b>
-  <br><br>
-  <ul>
-    <li>irrigationTime - default irrigation time in minutes (used by command <b>IrrigateZone</b> without parameter)</li>
-    <li>disable - disables the device</li>
-  </ul>
-  <br><br>
-  <a name="RainbirdZoneset"></a>
-  <b>set</b>
-  <br><br>
-  <ul>
-    <li>ClearReadings - clears all readings</li>
-    <li>IrrigateZone [&lt;minutes&gt;] - starts irrigating the zone for [minutes] or attribute <b>irrigationTime</b/li>
-    <li>StopIrrigation - stops irrigating the zone</li>
-  </ul>
-</ul>
-
 =end html
 =cut
