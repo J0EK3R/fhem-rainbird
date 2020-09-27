@@ -52,7 +52,7 @@ sub RainbirdZone_GetZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.5.1';
+my $VERSION = '1.6.0';
 
 my $DefaultIrrigationTime = 10;
 
@@ -67,6 +67,7 @@ sub RainbirdZone_Initialize($)
 
   # Consumer
   $hash->{SetFn}    = \&RainbirdZone_Set;
+  $hash->{GetFn}    = \&RainbirdZone_Get;
   $hash->{DefFn}    = \&RainbirdZone_Define;
   $hash->{UndefFn}  = \&RainbirdZone_Undef;
   $hash->{DeleteFn} = \&RainbirdZone_Delete;
@@ -78,6 +79,7 @@ sub RainbirdZone_Initialize($)
 
   $hash->{AttrList} = "" . 
     "IODev " . 
+    'expert:1,0 ' . 
     "disable:1 " . 
     "irrigationTime:10 " .
      $readingFnAttributes;
@@ -111,7 +113,8 @@ sub RainbirdZone_Define($$)
   $hash->{ZONEMASK}       = RainbirdZone_GetZoneMask($zoneId);
   $hash->{IRRIGATIONTIME} = $DefaultIrrigationTime;
   $hash->{AVAILABLE}      = 0;
-
+  $hash->{EXPERTMODE}     = 0;
+  
   ### ensure attribute IODev is present
   CommandAttr( undef, $name . ' IODev ' . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
     if ( AttrVal( $name, 'IODev', 'none' ) eq 'none' );
@@ -148,7 +151,7 @@ sub RainbirdZone_Define($$)
     if ( AttrVal( $name, 'room', 'none' ) eq 'none' );
 
   ### ensure attribute webCmd is present
-  CommandAttr( undef, $name . ' webCmd IrrigateZone:StopIrrigation' )
+  CommandAttr( undef, $name . ' webCmd Irrigate:Stop' )
     if ( AttrVal( $name, 'webCmd', 'none' ) eq 'none' );
 
   ### ensure attribute irrigationTime is present
@@ -237,6 +240,33 @@ sub RainbirdZone_Attr(@)
     Log3 $name, 3, "RainbirdZone ($name) - set irrigationtime to " . $hash->{IRRIGATIONTIME} . " minutes";
   }
 
+   ### Attribute "expert"
+  if ( $attrName eq 'expert' )
+  {
+    if ( $cmd eq 'set' )
+    {
+      if ($attrVal eq '1' )
+      {
+        $hash->{EXPERTMODE} = 1;
+        Log3 $name, 3, "RainbirdController ($name) - expert mode enabled";
+      }
+      elsif ($attrVal eq '0' )
+      {
+        $hash->{EXPERTMODE} = 0;
+        Log3 $name, 3, "RainbirdController ($name) - expert mode disabled";
+      }
+      else
+      {
+        return 'expert must be 0 or 1';
+      }
+    } 
+    elsif ( $cmd eq 'del' )
+    {
+      $hash->{EXPERTMODE} = 0;
+      Log3 $name, 3, "RainbirdController ($name) - expert mode disabled";
+    }
+  }
+
   return undef;
 }
 
@@ -274,8 +304,8 @@ sub RainbirdZone_Set($@)
 
   Log3 $name, 4, "RainbirdZone ($name) - Set was called: cmd= $cmd";
 
-  ### IrrigateZone
-  if ( lc $cmd eq 'irrigatezone' )
+  ### Irrigate
+  if ( lc $cmd eq lc 'Irrigate' )
   {
     return "usage: $cmd [opt: <minutes>]"
       if ( @args > 1 );
@@ -288,21 +318,21 @@ sub RainbirdZone_Set($@)
       if ( @args == 1 );
 
     # send command via RainbirdController
-    IOWrite( $hash, $cmd, $zoneId, $minutes );
+    IOWrite( $hash, "IrrigateZone", $zoneId, $minutes );
   } 
 
-  ### StopIrrigation
-  elsif ( lc $cmd eq 'stopirrigation' )
+  ### Stop
+  elsif ( lc $cmd eq lc 'Stop' )
   {
     return "usage: $cmd"
       if ( @args != 0 );
 
     # send command via RainbirdController
-    IOWrite( $hash, $cmd );
+    IOWrite( $hash, "StopIrrigation" );
   } 
   
   ### ClearReadings
-  elsif ( lc $cmd eq 'clearreadings' )
+  elsif ( lc $cmd eq lc 'ClearReadings' )
   {
     my @cH = ($hash);
     push @cH,$defs{$hash->{$_}} foreach(grep /^channel/,keys %{$hash});
@@ -314,9 +344,41 @@ sub RainbirdZone_Set($@)
   {
     my $list = "";
 
-    $list .= " StopIrrigation:noArg" if ($hash->{AVAILABLE} == 1);
-    $list .= " IrrigateZone" if ($hash->{AVAILABLE} == 1);
+    $list .= " Stop:noArg" if ($hash->{AVAILABLE} == 1);
+    $list .= " Irrigate" if ($hash->{AVAILABLE} == 1);
     $list .= " ClearReadings:noArg";
+
+    return "Unknown argument $cmd, choose one of $list";
+  }
+}
+
+#####################################
+# Get( $hash, $name, $cmd, @args )
+#####################################
+sub RainbirdZone_Get($@)
+{
+  my ( $hash, $name, $cmd, @args ) = @_;
+
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 4, "RainbirdZone ($name) - Get was called: cmd= $cmd";
+
+  ### Schedule
+  if ( lc $cmd eq lc 'Schedule' )
+  {
+    return "usage: $cmd"
+      if ( @args != 0 );
+
+    # send command via RainbirdController
+    IOWrite( $hash, "ZoneGetSchedule", $zoneId );
+  } 
+
+  ### else
+  else
+  {
+    my $list = "";
+
+    $list .= " Schedule:noArg" if ($hash->{EXPERTMODE} and $hash->{AVAILABLE} == 1);
 
     return "Unknown argument $cmd, choose one of $list";
   }
@@ -430,6 +492,38 @@ sub RainbirdZone_ProcessMessage($$)
 
     ### just trigger function -> values are fetched from internals of attached RainbirdController
     RainbirdZone_GetZoneAvailable($hash);
+  }
+
+  ### CurrentScheduleResponse
+  elsif(lc $type eq lc "CurrentScheduleResponse" and
+    $json_message->{"zoneId"} == $hash->{ZONEID})
+  {
+    #"A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
+    #  "zoneId"         => {"position" =>  2, "length" => 4}, 
+    #  "timespan"       => {"position" =>  6, "length" => 2}, 
+    #  "timer1"         => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    #  "timer2"         => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    #  "timer3"         => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    #  "timer4"         => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
+    #  "timer5"         => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    #  "param1"         => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
+    #  "mode"           => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
+    #  "weekday"        => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
+    #  "interval"       => {"position" => 24, "length" => 2}, 
+    #  "intervaloffset" => {"position" => 26, "length" => 2}},
+
+    readingsBeginUpdate($hash);
+    readingsBulkUpdate( $hash, 'scheduletimespan', $json_message->{"timespan"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduletimer1', $json_message->{"timer1"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduletimer2', $json_message->{"timer2"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduletimer3', $json_message->{"timer3"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduletimer4', $json_message->{"timer4"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduletimer5', $json_message->{"timer5"}, 1 );
+    readingsBulkUpdate( $hash, 'schedulemode', $json_message->{"mode"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduleweekday', $json_message->{"weekday"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduleinterval', $json_message->{"interval"}, 1 );
+    readingsBulkUpdate( $hash, 'scheduleintervaloffset', $json_message->{"intervaloffset"}, 1 );
+    readingsEndUpdate( $hash, 1 );
   }
 
   else
@@ -553,11 +647,17 @@ sub RainbirdZone_GetZoneMask($)
       <li><B>ClearReadings</B><a name="RainbirdZoneClearReadings"></a><br>
         Clears all readings.
       </li>
-      <li><B>IrrigateZone [&lt;minutes&gt;]</B><a name="RainbirdZoneIrrigateZone"></a><br>
+      <li><B>Irrigate [&lt;minutes&gt;]</B><a name="RainbirdZoneIrrigate"></a><br>
         Starts irrigating the zone for [minutes] or attribute <b>irrigationTime</b>
       </li>
-      <li><B>StopIrrigation</B><a name="RainbirdZoneStopIrrigation"></a><br>
+      <li><B>Stop</B><a name="RainbirdZoneStop"></a><br>
         Stops irrigating the zone.
+      </li>
+    </ul><br>
+    <a name="RainbirdZoneget"></a><b>Get</b>
+    <ul>
+      <li><B>Schedule</B><a name="RainbirdZoneSchedule"></a><br>
+        Get the schedule of the zone.
       </li>
     </ul><br>
     <a name="RainbirdZoneattr"></a><b>Attributes</b>
@@ -567,6 +667,15 @@ sub RainbirdZone_GetZoneMask($)
       </li>
       <li><a name="RainbirdZoneirrigationTime">irrigationTime</a><br>
         Default irrigation time in minutes (used by command <b>IrrigateZone</b> without parameter)<br>
+      </li>
+      <li><a name="RainbirdZoneexpert">expert</a><br>
+        Switches to expert mode.<br>
+      </li>
+    </ul><br>
+    <a name="RainbirdControllerinternals"></a><b>Internals</b>
+    <ul>
+      <li><B>EXPERTMODE</B><br>
+        gives information if device is in expert mode<br>
       </li>
     </ul><br>
     <br>
