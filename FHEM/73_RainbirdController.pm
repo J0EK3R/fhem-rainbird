@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.6.0';
+my $VERSION = '1.7.0';
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
 my $DefaultTimeout = 20;
@@ -126,11 +126,11 @@ my %KnownModels = (
 ### format of a command entry
 ### command name:                 "CurrentDateSetRequest" => 
 ###                               {
-###	command string:                 "command" => "13", 
+###	command number as string:       "command" => "13", 
 ### [opt] first parameter charlen:  "parameter1" => 2, 
 ### [opt] second parameter charlen: "parameter2" => 1, "
 ### [opt] third parameter charlen:  "parameter3" => 3, 
-### response number string:         "response" => "01", 
+### response number as string:      "response" => "01", 
 ### total bytelength:               "length" => 4
 ###                               },
 my %ControllerCommands = (
@@ -138,14 +138,18 @@ my %ControllerCommands = (
   "AvailableStationsRequest" => {"command" => "03", "response" => "83", "length" => 2, 
   	"parameter1" => 2},
   "CommandSupportRequest" => {"command" => "04", "response" => "84", "length" => 2, 
-  	"parameter1" => 2},
+  	"parameter1" => 2}, # command like "04"
   "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
   "Unknown06Request" => {"command" => "06", "response" => "86", "length" => 5, 
   	"parameter1" => 2, 
   	"parameter2" => 1, 
   	"parameter3" => 1, 
   	"parameter4" => 1},
-#  "SupportedRequest" => {"command" => "07", "response" => "85", "length" => 1}, set RainbirdController TestRAW 0700000000
+  "Unknown07Request" => {"command" => "07", "response" => "86", "length" => 5, 
+    "parameter1" => 2, 
+    "parameter2" => 2, 
+    "parameter3" => 2, 
+    "parameter4" => 2},
   "CurrentTimeGetRequest" => {"command" => "10", "response" => "90", "length" => 1},
   "CurrentTimeSetRequest" => {"command" => "11", "response" => "01", "length" => 4, 
   	"parameter1" => 2, 
@@ -206,7 +210,7 @@ my %ControllerCommands = (
 );
 
 ### format of a response entry
-### response number string:    "00" => 
+### response number as string: "00" => 
 ###                            {
 ### total bytelength	         "length" =>  3, 
 ### response name                "type" => "NotAcknowledgeResponse", 
@@ -343,6 +347,7 @@ sub RainbirdController_Initialize($)
   $hash->{AttrList} = 
     'disable:1 ' . 
     'expert:1,0 ' . 
+    'autocreatezones:1,0 ' . 
     'interval ' . 
     'disabledForIntervals ' . 
     'timeout ' . 
@@ -385,6 +390,7 @@ sub RainbirdController_Define($$)
   $hash->{NOTIFYDEV}                     = "global,$name";
   $hash->{HOST}                          = $host;
   $hash->{EXPERTMODE}                    = 0;
+  $hash->{AUTOCREATEZONES}               = 1;
   $hash->{"ZONESAVAILABLECOUNT"}         = 0; # 
   $hash->{"ZONESAVAILABLEMASK"}          = 0; # 
   $hash->{"ZONEACTIVE"}                  = 0; # 
@@ -601,6 +607,33 @@ sub RainbirdController_Attr(@)
     {
       $hash->{EXPERTMODE} = 0;
       Log3 $name, 3, "RainbirdController ($name) - expert mode disabled";
+    }
+  }
+
+  ### Attribute "autocreatezones"
+  if ( $attrName eq 'autocreatezones' )
+  {
+    if ( $cmd eq 'set' )
+    {
+      if ($attrVal eq '1' )
+      {
+        $hash->{AUTOCREATEZONES} = 1;
+        Log3 $name, 3, "RainbirdController ($name) - autocreatezones enabled";
+      }
+      elsif ($attrVal eq '0' )
+      {
+        $hash->{AUTOCREATEZONES} = 0;
+        Log3 $name, 3, "RainbirdController ($name) - autocreatezones disabled";
+      }
+      else
+      {
+        return 'autocreatezones must be 0 or 1';
+      }
+    } 
+    elsif ( $cmd eq 'del' )
+    {
+      $hash->{AUTOCREATEZONES} = 1;
+      Log3 $name, 3, "RainbirdController ($name) - autocreatezones disabled";
     }
   }
 
@@ -1155,21 +1188,29 @@ sub RainbirdController_GetDeviceState($;$)
   my ( $hash, $callback ) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "RainbirdController ($name) - getDeviceState";
+  Log3 $name, 4, "RainbirdController ($name) - GetDeviceState";
 
   # definition of the callback chain
   # each function calls the given callback in their resultcallback
-  my $runCallback = sub 
+  
+  my $currentZone = 1;
+  my $getScheduleCallback = undef;
+  $getScheduleCallback = sub 
   {
+  	if($currentZone <= $hash->{"ZONESAVAILABLECOUNT"})
+  	{
+  	  RainbirdController_ZoneGetSchedule($hash, $currentZone, $getScheduleCallback);
+  	  $currentZone++;
+  	}
     # if there is a callback then call it
-    if( defined($callback))
+    elsif( defined($callback))
     {
-      Log3 $name, 4, "RainbirdController ($name) - getDeviceState callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetDeviceState callback";
       $callback->();
     }
-  };	 
+  };     
   
-  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $runCallback); };
+  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getScheduleCallback); };
   my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
   my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
   my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
@@ -1187,7 +1228,7 @@ sub RainbirdController_GetDeviceInfo($;$)
   my ( $hash, $callback ) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "RainbirdController ($name) - getDeviceInfo";
+  Log3 $name, 4, "RainbirdController ($name) - GetDeviceInfo";
 
   # definition of the callback chain
   # each function calls the given callback in their resultcallback
@@ -1196,7 +1237,7 @@ sub RainbirdController_GetDeviceInfo($;$)
     # if there is a callback then call it
     if( defined($callback))
     {
-      Log3 $name, 4, "RainbirdController ($name) - getDeviceInfo callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetDeviceInfo callback";
       $callback->();
     }
   };  
@@ -1218,14 +1259,14 @@ sub RainbirdController_GetModelAndVersion($;$)
     
   my $command = "ModelAndVersion";
   
-  Log3 $name, 4, "RainbirdController ($name) - getModelAndVersion";
+  Log3 $name, 4, "RainbirdController ($name) - GetModelAndVersion";
 
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getModelAndVersion resultCallback";
+    Log3 $name, 4, "RainbirdController ($name) - GetModelAndVersion resultCallback";
     
     if( defined($result) )
     {
@@ -1266,7 +1307,7 @@ sub RainbirdController_GetModelAndVersion($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getModelAndVersion callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetModelAndVersion callback";
       $callback->();
     }
   }; 
@@ -1286,14 +1327,14 @@ sub RainbirdController_GetAvailableZones($;$)
   my $command = "AvailableStations";   
   my $mask = sprintf("%%0%dX", $ControllerResponses{"83"}->{"setStations"}->{"length"});
 
-  Log3 $name, 4, "RainbirdController ($name) - getAvailableZones mask: $mask";
+  Log3 $name, 4, "RainbirdController ($name) - GetAvailableZones mask: $mask";
   
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getAvailableZones lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetAvailableZones lambda";
     
     if( defined($result) )
     {
@@ -1333,7 +1374,7 @@ sub RainbirdController_GetAvailableZones($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getAvailableZones callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetAvailableZones callback";
       $callback->();
     }
   }; 
@@ -1352,14 +1393,14 @@ sub RainbirdController_GetCommandSupport($$;$)
   
   my $command = "CommandSupport";
      
-  Log3 $name, 4, "RainbirdController ($name) - getCommandSupport";
+  Log3 $name, 4, "RainbirdController ($name) - GetCommandSupport";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getCommandSupport lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetCommandSupport lambda";
     
     if( defined($result) )
     {
@@ -1380,7 +1421,7 @@ sub RainbirdController_GetCommandSupport($$;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getCommandSupport callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetCommandSupport callback";
       $callback->();
     }
   }; 
@@ -1398,14 +1439,14 @@ sub RainbirdController_SetWaterBudget($$;$)
   my $name = $hash->{NAME};
     
   my $command = "WaterBudget";
-  Log3 $name, 4, "RainbirdController ($name) - setWaterBudget";
+  Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - setWaterBudget lambda";
+    Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget lambda";
     
     if( defined($result) )
     {
@@ -1426,7 +1467,7 @@ sub RainbirdController_SetWaterBudget($$;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - setWaterBudget callback";
+      Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget callback";
       $callback->();
     }
   }; 
@@ -1445,14 +1486,14 @@ sub RainbirdController_GetRainSensorState($;$)
   
   my $command = "CurrentRainSensorState";
   
-  Log3 $name, 4, "RainbirdController ($name) - getRainSensorState";
+  Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getRainSensorState lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState lambda";
     
     if( defined($result) )
     {
@@ -1469,7 +1510,7 @@ sub RainbirdController_GetRainSensorState($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getRainSensorState callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState callback";
       $callback->();
     }
   }; 
@@ -1488,14 +1529,14 @@ sub RainbirdController_GetSerialNumber($;$)
     
   my $command = "SerialNumber";
   
-  Log3 $name, 4, "RainbirdController ($name) - getSerialNumber";
+  Log3 $name, 4, "RainbirdController ($name) - GetSerialNumber";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getSerialNumber lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetSerialNumber lambda";
     
     if( defined($result) )
     {
@@ -1512,7 +1553,7 @@ sub RainbirdController_GetSerialNumber($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getSerialNumber callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetSerialNumber callback";
       $callback->();
     }
   }; 
@@ -1531,14 +1572,14 @@ sub RainbirdController_GetCurrentTime($;$)
     
   my $command = "CurrentTimeGet";
   
-  Log3 $name, 4, "RainbirdController ($name) - getCurrentTime";
+  Log3 $name, 4, "RainbirdController ($name) - GetCurrentTime";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getCurrentTime lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetCurrentTime lambda";
     
     if( defined($result) )
     {
@@ -1557,7 +1598,7 @@ sub RainbirdController_GetCurrentTime($;$)
     # if there is a callback then call it
     if( defined($callback))
     {
-      Log3 $name, 4, "RainbirdController ($name) - getCurrentTime callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetCurrentTime callback";
       $callback->();
     }
   }; 
@@ -1576,14 +1617,14 @@ sub RainbirdController_SetCurrentTime($$$$;$)
     
   my $command = "CurrentTimeSet";
   
-  Log3 $name, 4, "RainbirdController ($name) - setCurrentTime: $hour:$minute:$second";
+  Log3 $name, 4, "RainbirdController ($name) - SetCurrentTime: $hour:$minute:$second";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - setCurrentTime lambda";
+    Log3 $name, 4, "RainbirdController ($name) - SetCurrentTime lambda";
     
     if( defined($result) )
     {
@@ -1610,14 +1651,14 @@ sub RainbirdController_GetCurrentDate($;$)
   
   my $command = "CurrentDateGet";
      
-  Log3 $name, 4, "RainbirdController ($name) - getCurrentDate";
+  Log3 $name, 4, "RainbirdController ($name) - GetCurrentDate";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getCurrentDate lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetCurrentDate lambda";
     
     if( defined($result) )
     {
@@ -1636,7 +1677,7 @@ sub RainbirdController_GetCurrentDate($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getCurrentDate callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetCurrentDate callback";
       $callback->();
     }
   }; 
@@ -1655,14 +1696,14 @@ sub RainbirdController_SetCurrentDate($$$$;$)
     
   my $command = "CurrentDateSet";
   
-  Log3 $name, 4, "RainbirdController ($name) - setCurrentDate: $year-$month-$day";
+  Log3 $name, 4, "RainbirdController ($name) - SetCurrentDate: $year-$month-$day";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - setCurrentDate lambda";
+    Log3 $name, 4, "RainbirdController ($name) - SetCurrentDate lambda";
     
     if( defined($result) )
     {
@@ -1691,14 +1732,14 @@ sub RainbirdController_GetCurrentIrrigation($;$)
   
   my $command = "CurrentIrrigationState";
   
-  Log3 $name, 4, "RainbirdController ($name) - getCurrentIrrigation";
+  Log3 $name, 4, "RainbirdController ($name) - GetCurrentIrrigation";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getCurrentIrrigation lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetCurrentIrrigation lambda";
     
     if( defined($result) )
     {
@@ -1715,7 +1756,7 @@ sub RainbirdController_GetCurrentIrrigation($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getCurrentIrrigation callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetCurrentIrrigation callback";
       $callback->();
     }
   }; 
@@ -1806,14 +1847,14 @@ sub RainbirdController_GetRainDelay($;$)
     
   my $command = "RainDelayGet";
   
-  Log3 $name, 4, "RainbirdController ($name) - getRainDelay";
+  Log3 $name, 4, "RainbirdController ($name) - GetRainDelay";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - getRainDelay lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetRainDelay lambda";
     
     if( defined($result) )
     {
@@ -1830,7 +1871,7 @@ sub RainbirdController_GetRainDelay($;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - getRainDelay callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetRainDelay callback";
       $callback->();
     }
   }; 
@@ -1849,14 +1890,14 @@ sub RainbirdController_SetRainDelay($$;$)
   
   my $command = "RainDelaySet";
     
-  Log3 $name, 4, "RainbirdController ($name) - setRainDelay";
+  Log3 $name, 4, "RainbirdController ($name) - SetRainDelay";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - setRainDelay lambda";
+    Log3 $name, 4, "RainbirdController ($name) - SetRainDelay lambda";
     
     if( defined($result) )
     {
@@ -1883,14 +1924,14 @@ sub RainbirdController_ZoneIrrigate($$$;$)
   
   my $command = "ManuallyRunStation";
     
-  Log3 $name, 4, "RainbirdController ($name) - ZoneIrrigate";
+  Log3 $name, 4, "RainbirdController ($name) - ZoneIrrigate[$zone]";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - ZoneIrrigate lambda";
+    Log3 $name, 4, "RainbirdController ($name) - ZoneIrrigate[$zone] lambda";
     
     if( defined($result) )
     {
@@ -1917,14 +1958,14 @@ sub RainbirdController_ZoneGetSchedule($$;$)
   
   my $command = "CurrentSchedule";
     
-  Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule";
+  Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule[$zone]";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule lambda";
+    Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule[$zone] lambda";
     
     if( defined($result) )
     {
@@ -1932,12 +1973,29 @@ sub RainbirdController_ZoneGetSchedule($$;$)
 
       readingsEndUpdate( $hash, 1 );
 
+      # "A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
+      #     "zoneId"         => {"position" =>  2, "length" => 4}, 
+      #     "timespan"       => {"position" =>  6, "length" => 2}, 
+      #     "timer1"         => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer2"         => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer3"         => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer4"         => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
+      #     "timer5"         => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "param1"         => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
+      #     "mode"           => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
+      #     "weekday"        => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
+      #     "interval"       => {"position" => 24, "length" => 2}, 
+      #     "intervaloffset" => {"position" => 26, "length" => 2}},
+
+      # save result hash in helper
+      $hash->{helper}{'Zone' . $result->{zoneId}} = $result;
+
       ### encode $result to json string
       my $jsonString = eval{encode_json($result)};
 
       if($@)
       {
-        Log3 $name, 2, "RainbirdController ($name) - ZoneGetSchedule error while request: $@";
+        Log3 $name, 2, "RainbirdController ($name) - ZoneGetSchedule[$zone] error while request: $@";
       }
       else
       {
@@ -1949,7 +2007,7 @@ sub RainbirdController_ZoneGetSchedule($$;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule callback";
+      Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule[$zone] callback";
       $callback->();
     }
   }; 
@@ -1968,14 +2026,14 @@ sub RainbirdController_ZoneTest($$;$)
   
   my $command = "TestStations";
     
-  Log3 $name, 4, "RainbirdController ($name) - ZoneTest";
+  Log3 $name, 4, "RainbirdController ($name) - ZoneTest[$zone]";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - ZoneTest lambda";
+    Log3 $name, 4, "RainbirdController ($name) - ZoneTest[$zone] lambda";
 
     if( defined($result) )
     {
@@ -1987,7 +2045,7 @@ sub RainbirdController_ZoneTest($$;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - ZoneTest callback";
+      Log3 $name, 4, "RainbirdController ($name) - ZoneTest[$zone] callback";
       $callback->();
     }
   }; 
@@ -2006,14 +2064,14 @@ sub RainbirdController_SetProgram($$;$)
   
   my $command = "ManuallyRunProgram";
     
-  Log3 $name, 4, "RainbirdController ($name) - setProgram";
+  Log3 $name, 4, "RainbirdController ($name) - SetProgram";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - setProgram lambda";
+    Log3 $name, 4, "RainbirdController ($name) - SetProgram lambda";
     
     if( defined($result) )
     {
@@ -2040,14 +2098,14 @@ sub RainbirdController_StopIrrigation($;$)
   
   my $command = "StopIrrigation";
     
-  Log3 $name, 4, "RainbirdController ($name) - stopIrrigation";
+  Log3 $name, 4, "RainbirdController ($name) - StopIrrigation";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - stopIrrigation lambda";
+    Log3 $name, 4, "RainbirdController ($name) - StopIrrigation lambda";
     
     if( defined($result) )
     {
@@ -2106,14 +2164,14 @@ sub RainbirdController_TestCMD($$$;$)
   my ( $hash, $command, $args, $callback ) = @_;
   my $name = $hash->{NAME};
   
-  Log3 $name, 4, "RainbirdController ($name) - testCMD";
+  Log3 $name, 4, "RainbirdController ($name) - TestCMD";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - testCMD lambda";
+    Log3 $name, 4, "RainbirdController ($name) - TestCMD lambda";
     
     if( defined($result) )
     {
@@ -2139,14 +2197,14 @@ sub RainbirdController_TestRAW($$;$)
   my ( $hash, $rawHexString, $callback ) = @_;
   my $name = $hash->{NAME};
   
-  Log3 $name, 4, "RainbirdController ($name) - testRAW";
+  Log3 $name, 4, "RainbirdController ($name) - TestRAW";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - testRAW lambda";
+    Log3 $name, 4, "RainbirdController ($name) - TestRAW lambda";
     
     if( defined($result) )
     {
@@ -2265,7 +2323,7 @@ sub RainbirdController_Command($$$@)
   my ( $hash, $resultCallback, $command, @args ) = @_;
   my $name = $hash->{NAME};
  
-  Log3 $name, 4, "RainbirdController ($name) - command: $command";
+  Log3 $name, 4, "RainbirdController ($name) - Command: $command";
   
   # find controllercommand-structure in hash "ControllerCommands"
   my $request_command = $command . "Request";
@@ -2273,7 +2331,7 @@ sub RainbirdController_Command($$$@)
 
   if( not defined( $command_set ) )
   {
-    Log3 $name, 2, "RainbirdController ($name) - command: ControllerCommand \"" . $request_command . "\" not found!";
+    Log3 $name, 2, "RainbirdController ($name) - Command: ControllerCommand \"" . $request_command . "\" not found!";
     return undef;
   }
   
@@ -2282,7 +2340,7 @@ sub RainbirdController_Command($$$@)
 
   if(not defined($data))
   {
-    Log3 $name, 2, "RainbirdController ($name) - command: data not defined";
+    Log3 $name, 2, "RainbirdController ($name) - Command: data not defined";
     return;
   }  
 
@@ -2311,13 +2369,13 @@ sub RainbirdController_Request($$$$)
   	}
   }';
   
-  Log3 $name, 5, "RainbirdController ($name) - request: send_data: $send_data";
+  Log3 $name, 5, "RainbirdController ($name) - Request: send_data: $send_data";
 
   ### encrypt data
   my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, RainbirdController_ReadPassword($hash));          
   if(not defined($encrypt_data))
   {
-    Log3 $name, 2, "RainbirdController ($name) - request: data not defined";
+    Log3 $name, 2, "RainbirdController ($name) - Request: data not defined";
   	return;
   }
 
@@ -3138,6 +3196,11 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       </li>
       <li><a name="RainbirdControllerexpert">expert</a><br>
         Switches to expert mode.<br>
+        If enabled then additional features for <b>debugging purposes</b> will available.<br> 
+      </li>
+      <li><a name="RainbirdControllerautocreatezones">autocreatezones</a><br>
+        If <b>enabled</b> (default) then RainbirdZone devices will be created automatically.<br>
+        If <b>disabled</b> then  RainbirdZone devices must be create manually.<br>
       </li>
     </ul><br>
     <a name="RainbirdControllerinternals"></a><b>Internals</b>
