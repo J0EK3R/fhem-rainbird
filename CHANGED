@@ -1,3 +1,3 @@
 FHEM Rainbird last changes:
-2020-09-27
- - v1.6.0 Command "ZoneGetSchedule" available
+2020-09-29
+ - v1.7.0 schedules in RainbirdZones available
