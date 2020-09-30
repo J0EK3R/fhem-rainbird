@@ -56,7 +56,7 @@ sub RainbirdZone_GetZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.7.0';
+my $VERSION = '1.7.1';
 
 my $DefaultIrrigationTime = 10;
 
@@ -551,7 +551,7 @@ sub RainbirdZone_GetZoneActive($)
 
   Log3 $name, 5, "RainbirdZone ($name) - GetZoneActive was called";
 
-  my $activeZoneMask = $hash->{IODev}->{"ZONEACTIVEMASK"};
+  my $activeZoneMask = $hash->{IODev}->{ZONEACTIVEMASK};
   my $mask = $hash->{ZONEMASK};
   my $result = $mask & $activeZoneMask;
   
@@ -586,7 +586,7 @@ sub RainbirdZone_GetZoneAvailable($)
 
   Log3 $name, 5, "RainbirdZone ($name) - GetZoneAvailable was called";
 
-  my $availableZoneMask = $hash->{IODev}->{"ZONESAVAILABLEMASK"}; 
+  my $availableZoneMask = $hash->{IODev}->{ZONESAVAILABLEMASK}; 
   my $mask = $hash->{ZONEMASK};
   my $result = $mask & $availableZoneMask;
 

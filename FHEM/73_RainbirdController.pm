@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.7.0';
+my $VERSION = '1.7.1';
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
 my $DefaultTimeout = 20;
@@ -63,8 +63,8 @@ sub RainbirdController_TimerStop($);
 sub RainbirdController_TimerRestart($);
 sub RainbirdController_TimerCallback($);
 
-sub RainbirdController_GetDeviceState($;$);
 sub RainbirdController_GetDeviceInfo($;$);
+sub RainbirdController_GetDeviceState($;$);
 
 sub RainbirdController_GetModelAndVersion($;$);
 sub RainbirdController_GetAvailableZones($;$);
@@ -101,10 +101,12 @@ sub RainbirdController_TestRAW($$;$);
 sub RainbirdController_GetZoneFromRaw($);
 sub RainbirdController_GetAvailableZoneCountFromRaw($);
 sub RainbirdController_GetAvailableZoneMaskFromRaw($);
+
 sub RainbirdController_Command($$$@);
 sub RainbirdController_Request($$$$);
 sub RainbirdController_ErrorHandling($$$);
 sub RainbirdController_ResponseProcessing($$);
+
 sub RainbirdController_EncodeData($$@);
 sub RainbirdController_DecodeData($$);
 sub RainbirdController_AddPadding($$);
@@ -247,7 +249,7 @@ my %ControllerResponses = (
    	"pageNumber" => {"position" => 2, "length" => 2}, 
    	"setStations" => {"position" => 4, "length" => 8} },
   "84" => {"length" =>  3, "type" => "CommandSupportResponse", 
-   	"commandEcho" => {"position" => 2, "length" => 2}, 
+   	"commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
    	"support" => {"position" => 4, "length" => 2} },
   "85" => {"length" =>  9, "type" => "SerialNumberResponse", 
    	"serialNumber" => {"position" => 2, "length" => 16} },
@@ -312,6 +314,7 @@ my $DEFAULT_PAGE = 0;
 my $BLOCK_SIZE = 16;
 my $INTERRUPT = "\x00";
 my $PAD = "\x10";
+my $CMDSUPPORTPREFIX = "CMDSUPPORT_"; # hide with prefix "."
 
 ### HTML hedaer
 my $HEAD = 
@@ -391,22 +394,25 @@ sub RainbirdController_Define($$)
   $hash->{HOST}                          = $host;
   $hash->{EXPERTMODE}                    = 0;
   $hash->{AUTOCREATEZONES}               = 1;
-  $hash->{"ZONESAVAILABLECOUNT"}         = 0; # 
-  $hash->{"ZONESAVAILABLEMASK"}          = 0; # 
-  $hash->{"ZONEACTIVE"}                  = 0; # 
-  $hash->{"ZONEACTIVEMASK"}              = 0; # 
+  $hash->{ZONESAVAILABLECOUNT}           = 0; # 
+  $hash->{ZONESAVAILABLEMASK}            = 0; # 
+  $hash->{ZONEACTIVE}                    = 0; # 
+  $hash->{ZONEACTIVEMASK}                = 0; # 
   $hash->{REQUESTID}                     = 0;
   $hash->{TIMERON}                       = 0;
   $hash->{helper}{RESPONSESUCCESSCOUNT}  = 0; # statistics
   $hash->{helper}{RESPONSEERRORCOUNT}    = 0; # statistics
   $hash->{helper}{RESPONSETOTALTIMESPAN} = 0; # statistics
+
+  ### dont check these commands
+  $hash->{$CMDSUPPORTPREFIX . '04'}                 = 1;
     
   ### set attribute defaults
   CommandAttr( undef, $name . ' room Rainbird' )
     if ( AttrVal( $name, 'room', 'none' ) eq 'none' );
 
   ### ensure attribute webCmd is present
-  CommandAttr( undef, $name . ' webCmd Stop Update' )
+  CommandAttr( undef, $name . ' webCmd Stop:Update' )
     if ( AttrVal( $name, 'webCmd', 'none' ) eq 'none' );
 
   ### ensure attribute event-on-change-reading is present
@@ -1181,46 +1187,6 @@ sub RainbirdController_TimerCallback($)
 }
 
 #####################################
-# gets the dynamic values of the device
-#####################################
-sub RainbirdController_GetDeviceState($;$)
-{
-  my ( $hash, $callback ) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 4, "RainbirdController ($name) - GetDeviceState";
-
-  # definition of the callback chain
-  # each function calls the given callback in their resultcallback
-  
-  my $currentZone = 1;
-  my $getScheduleCallback = undef;
-  $getScheduleCallback = sub 
-  {
-  	if($currentZone <= $hash->{"ZONESAVAILABLECOUNT"})
-  	{
-  	  RainbirdController_ZoneGetSchedule($hash, $currentZone, $getScheduleCallback);
-  	  $currentZone++;
-  	}
-    # if there is a callback then call it
-    elsif( defined($callback))
-    {
-      Log3 $name, 4, "RainbirdController ($name) - GetDeviceState callback";
-      $callback->();
-    }
-  };     
-  
-  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getScheduleCallback); };
-  my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
-  my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
-  my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
-  my $getIrrigationState = sub { RainbirdController_GetIrrigationState($hash, $getCurrentIrrigation); };
-  my $getRainDelay = sub { RainbirdController_GetRainDelay($hash, $getIrrigationState); };
-
-  $getRainDelay->($hash);
-}
-
-#####################################
 # gets the static values of the device
 #####################################
 sub RainbirdController_GetDeviceInfo($;$)
@@ -1247,6 +1213,46 @@ sub RainbirdController_GetDeviceInfo($;$)
   my $getSerialNumber = sub { RainbirdController_GetSerialNumber($hash, $getAvailableZones); };
 
   $getSerialNumber->($hash);
+}
+
+#####################################
+# gets the dynamic values of the device
+#####################################
+sub RainbirdController_GetDeviceState($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  Log3 $name, 4, "RainbirdController ($name) - GetDeviceState";
+
+  # definition of the callback chain
+  # each function calls the given callback in their resultcallback
+  
+  my $currentZone = 1;
+  my $getScheduleCallback = undef;
+  $getScheduleCallback = sub 
+  {
+  	if($currentZone <= $hash->{ZONESAVAILABLECOUNT})
+  	{
+  	  RainbirdController_ZoneGetSchedule($hash, $currentZone, $getScheduleCallback);
+  	  $currentZone++;
+  	}
+    # if there is a callback then call it
+    elsif( defined($callback))
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetDeviceState callback";
+      $callback->();
+    }
+  };     
+  
+  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getScheduleCallback); };
+  my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
+  my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
+  my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
+  my $getIrrigationState = sub { RainbirdController_GetIrrigationState($hash, $getCurrentIrrigation); };
+  my $getRainDelay = sub { RainbirdController_GetRainDelay($hash, $getIrrigationState); };
+
+  $getRainDelay->($hash);
 }
 
 #####################################
@@ -1345,8 +1351,8 @@ sub RainbirdController_GetAvailableZones($;$)
       	my $zonesAvailableCount = RainbirdController_GetAvailableZoneCountFromRaw($result->{"setStations"});
         my $zonesAvailableMask = RainbirdController_GetAvailableZoneMaskFromRaw($result->{"setStations"});
       	
-      	$hash->{"ZONESAVAILABLECOUNT"} = $zonesAvailableCount;
-        $hash->{"ZONESAVAILABLEMASK"} = $zonesAvailableMask;
+      	$hash->{ZONESAVAILABLECOUNT} = $zonesAvailableCount;
+        $hash->{ZONESAVAILABLEMASK} = $zonesAvailableMask;
       	
         #readingsBulkUpdate( $hash, 'zonesAvailable', $zonesAvailableCount);
       }
@@ -1406,13 +1412,13 @@ sub RainbirdController_GetCommandSupport($$;$)
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"support"}) )
+      if( defined($result->{"support"}) and
+        defined($result->{"commandEcho"}))
       {
-        readingsBulkUpdate( $hash, 'commandSupport', $result->{"support"}, 1 );
-      }
-      if( defined($result->{"commandEcho"}) )
-      {
-        readingsBulkUpdate( $hash, 'commandEcho', $result->{"commandEcho"}, 1 );
+      	$hash->{$CMDSUPPORTPREFIX . $result->{"commandEcho"}} = $result->{"support"};
+      	
+        #readingsBulkUpdate( $hash, 'commandSupport', $result->{"support"}, 1 );
+        #readingsBulkUpdate( $hash, 'commandEcho', $result->{"commandEcho"}, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -1425,9 +1431,19 @@ sub RainbirdController_GetCommandSupport($$;$)
       $callback->();
     }
   }; 
-    
-  # send command
-  RainbirdController_Command($hash, $resultCallback, $command, $askCommand );
+  
+  ### check if value start with 0x  
+  $askCommand = lc $askCommand;
+  if($askCommand =~ m/^0x[0-9A-F]+$/i) 
+  {
+    # send command
+    RainbirdController_Command($hash, $resultCallback, $command, hex($askCommand) );
+  }
+  else
+  {
+    # send command
+    RainbirdController_Command($hash, $resultCallback, $command, int($askCommand) );
+  }
 }
 
 #####################################
@@ -1794,8 +1810,8 @@ sub RainbirdController_GetIrrigationState($;$)
       	my $zoneActive = RainbirdController_GetZoneFromRaw($result->{"activeStations"});
         my $zoneActiveMask = 1 << ($zoneActive - 1);
       	
-        $hash->{"ZONEACTIVE"} = $zoneActive;
-        $hash->{"ZONEACTIVEMASK"} = $zoneActiveMask;
+        $hash->{ZONEACTIVE} = $zoneActive;
+        $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
         readingsBulkUpdate( $hash, 'zoneActive', $zoneActive);
 
@@ -2323,28 +2339,61 @@ sub RainbirdController_Command($$$@)
   my ( $hash, $resultCallback, $command, @args ) = @_;
   my $name = $hash->{NAME};
  
-  Log3 $name, 4, "RainbirdController ($name) - Command: $command";
+  Log3 $name, 4, "RainbirdController ($name) - Command: \"$command\"";
   
   # find controllercommand-structure in hash "ControllerCommands"
   my $request_command = $command . "Request";
   my $command_set = $ControllerCommands{$request_command};
 
-  if( not defined( $command_set ) )
+  if( defined( $command_set ) )
+  {
+  	my $commandString = $command_set->{"command"};
+    my $cmdKey = $CMDSUPPORTPREFIX . $commandString;
+  
+    ### check if support of command was checked before
+    if(not defined($hash->{$cmdKey}))
+    {
+      ### callback - this function have to be recalled
+      my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
+  	
+  	  ### check support of the command und recall this function 
+      RainbirdController_GetCommandSupport($hash, "0x" . $commandString, $commandCallback);
+      return; # callback is handled
+    }
+    ### command is supported
+    elsif($hash->{$cmdKey} == 1)
+    {
+      # encode data
+      my $data = RainbirdController_EncodeData($hash, $command_set, @args);  
+
+      if(defined($data))
+      {
+        ### send request to device 
+        RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $data );
+        return; # callback is handled
+      }
+      else
+      {
+        Log3 $name, 2, "RainbirdController ($name) - Command: data not defined";
+      }  
+    }
+    ### command is not supported
+    {
+      Log3 $name, 2, "RainbirdController ($name) - Command: $commandString is not supported";
+    }
+  }
+  else
   {
     Log3 $name, 2, "RainbirdController ($name) - Command: ControllerCommand \"" . $request_command . "\" not found!";
-    return undef;
   }
-  
-  # encode data
-  my $data = RainbirdController_EncodeData($hash, $command_set, @args);  
 
-  if(not defined($data))
+  # is there a callback function?
+  if(defined($resultCallback))
   {
-    Log3 $name, 2, "RainbirdController ($name) - Command: data not defined";
-    return;
-  }  
-
-  RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $data );
+    Log3 $name, 4, "RainbirdController ($name) - Command: calling lambda function";
+    
+    $resultCallback->(undef, undef);
+  }
 }
 
 #####################################
@@ -2354,68 +2403,79 @@ sub RainbirdController_Request($$$$)
 {
   my ( $hash, $resultCallback, $expectedResponse_id, $data ) = @_;
   my $name = $hash->{NAME};
+
+  my $sendReceive = undef; 
+  $sendReceive = sub ($;$)
+  {
+    my ( $leftRetries, $retryCallback ) = @_;
     
-  my $request_id = ++$hash->{REQUESTID};
+    my $request_id = ++$hash->{REQUESTID};
   
-  my $send_data = 
-  '{
-  	"id":' . $request_id . ',
-  	"jsonrpc":"2.0",
-  	"method":"tunnelSip",
-  	"params":
-  	{
-  	  "data":"' . $data . '",
-  	  "length":"' . (length($data) / 2) . '"
-  	}
-  }';
+    my $send_data = 
+    '{
+      "id":' . $request_id . ',
+      "jsonrpc":"2.0",
+      "method":"tunnelSip",
+      "params":
+      {
+        "data":"' . $data . '",
+        "length":"' . (length($data) / 2) . '"
+      }
+    }';
   
-  Log3 $name, 5, "RainbirdController ($name) - Request: send_data: $send_data";
+    Log3 $name, 5, "RainbirdController ($name) - Request[ID:$request_id] send_data: $send_data";
 
-  ### encrypt data
-  my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, RainbirdController_ReadPassword($hash));          
-  if(not defined($encrypt_data))
-  {
-    Log3 $name, 2, "RainbirdController ($name) - Request: data not defined";
-  	return;
-  }
+    ### encrypt data
+    my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, RainbirdController_ReadPassword($hash));          
 
-  ### post data 
-  my $uri = 'http://' . $hash->{HOST} . '/stick';
-  my $method = 'POST';
-  my $payload = $encrypt_data;
-  my $header = $HEAD;
-  my $request_timestamp = gettimeofday();
+    if(defined($encrypt_data))
+    {  
+      ### post data 
+      my $uri = 'http://' . $hash->{HOST} . '/stick';
+      my $method = 'POST';
+      my $payload = $encrypt_data;
+      my $header = $HEAD;
+      my $request_timestamp = gettimeofday();
 
-  Log3 $name, 5, "RainbirdController ($name) - Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $method";
+      Log3 $name, 5, "RainbirdController ($name) - Request[ID:$request_id] Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $method";
   
-  my $sendReceive = sub ($;$)
-  {
-  	my ( $leftRetries, $retryCallback ) = @_;
-  	
-    HttpUtils_NonblockingGet(
+      HttpUtils_NonblockingGet(
+      {
+        hash      => $hash,
+    
+        url       => $uri,
+        method    => $method,
+        header    => $header,
+        data      => $payload,
+        timeout   => $hash->{TIMEOUT},
+        doTrigger => 1,
+        callback  => \&RainbirdController_ErrorHandling,
+    
+        request_id => $request_id,
+        request_timestamp => $request_timestamp,
+      
+        expectedResponse_id => $expectedResponse_id,
+        sendData => $send_data,
+      
+        leftRetries => $leftRetries,
+        retryCallback => $retryCallback,
+        resultCallback => $resultCallback,
+      });
+    }
+    else
     {
-      hash      => $hash,
+      Log3 $name, 2, "RainbirdController ($name) - Request[ID:$request_id] data not defined";
+
+      ### is there a callback function?
+      if(defined($resultCallback))
+      {
+        Log3 $name, 4, "RainbirdController ($name) - Request[ID:$request_id]: calling lambda function";
     
-      url       => $uri,
-      method    => $method,
-      header    => $header,
-      data      => $payload,
-      timeout   => $hash->{TIMEOUT},
-      doTrigger => 1,
-      callback  => \&RainbirdController_ErrorHandling,
-    
-      request_id => $request_id,
-      request_timestamp => $request_timestamp,
-      
-      expectedResponse_id => $expectedResponse_id,
-      sendData => $send_data,
-      
-      leftRetries => $leftRetries,
-      retryCallback => $retryCallback,
-      resultCallback => $resultCallback,
-    });
+        $resultCallback->(undef, undef);
+      }
+    }
   };
-  
+
   $sendReceive->($hash->{RETRIES}, $sendReceive)
 }
 
@@ -2427,20 +2487,32 @@ sub RainbirdController_ErrorHandling($$$)
   my ( $param, $err, $data ) = @_;
   my $hash  = $param->{hash};
   my $name  = $hash->{NAME};
+  
   my $request_id  = $param->{request_id};
   my $leftRetries = $param->{leftRetries};
   my $retryCallback = $param->{retryCallback};
+  my $resultCallback = $param->{resultCallback};
+  my $sendData = $param->{sendData};
 
   my $response_timestamp = gettimeofday();
   my $request_timestamp = $param->{request_timestamp};
   my $requestResponse_timespan = $response_timestamp - $request_timestamp;
   my $errorMsg = "";
+  my $decoded = undef;
+
+  ### check if the current callback handles the last request.
+  ### else drop...
+  if($request_id != $hash->{REQUESTID})
+  {
+    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: Dropping old response! Current is: $hash->{REQUESTID}";
+    return;
+  }
 
   ### check error variable
   if ( defined($err) and 
     $err ne "" )
   {
-    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: Error: " . $err . " data: " . $data . "";
+    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: Error: " . $err . " data: \"" . $data . "\"";
     
     $errorMsg = 'error ' . $err;
   }
@@ -2450,7 +2522,7 @@ sub RainbirdController_ErrorHandling($$$)
     exists( $param->{code} ) and 
     $param->{code} != 200 )
   {
-    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: Code: " . $param->{code} . " data: " . $data . "";
+    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: Code: " . $param->{code} . " data: \"" . $data . "\"";
     
     if( $param->{code} == 403 ) ### Forbidden
     {
@@ -2467,7 +2539,7 @@ sub RainbirdController_ErrorHandling($$$)
     }
   }
 
-  Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: RequestID: " . $request_id . " data: " . $data . "";
+  Log3 $name, 5, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: data: \"" . $data . "\"";
 
   ### no error: process response
   if($errorMsg eq "")
@@ -2478,25 +2550,34 @@ sub RainbirdController_ErrorHandling($$$)
     $hash->{RESPONSESUCCESSCOUNT} = $hash->{helper}{RESPONSESUCCESSCOUNT};
     $hash->{RESPONSEAVERAGETIMESPAN} = $hash->{helper}{RESPONSETOTALTIMESPAN} / $hash->{helper}{RESPONSESUCCESSCOUNT};
   	
-    RainbirdController_ResponseProcessing( $param, $data );
+    $decoded = RainbirdController_ResponseProcessing( $param, $data );
   }
   ### error: retries left
   elsif(defined($retryCallback) and # is retryCallbeck defined
     $leftRetries > 0)               # are there any left retries
   {
-    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling: retry " . $leftRetries . " Error: " . $errorMsg;
+    Log3 $name, 5, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: retry " . $leftRetries . " Error: " . $errorMsg;
 
     ### call retryCallback with decremented number of left retries
     $retryCallback->($leftRetries - 1, $retryCallback);
+    return; # resultCallback is handled in retry 
   }
   else
   {
-    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling: no retries left Error: " . $errorMsg;
+    Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: no retries left Error: " . $errorMsg;
 
     $hash->{helper}{RESPONSEERRORCOUNT}++;
     $hash->{RESPONSEERRORCOUNT} = $hash->{helper}{RESPONSEERRORCOUNT};
 
     readingsSingleUpdate( $hash, 'state', $errorMsg, 1 );
+  }
+  
+    # is there a callback function?
+  if(defined($resultCallback))
+  {
+    Log3 $name, 4, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: calling lambda function";
+    
+    $resultCallback->($decoded, $sendData);
   }
 }
 
@@ -2509,17 +2590,16 @@ sub RainbirdController_ResponseProcessing($$)
 
   my $hash = $param->{hash};
   my $name = $hash->{NAME};
+  
   my $request_id  = $param->{request_id};
   my $expectedResponse_id = $param->{expectedResponse_id};
-  my $resultCallback = $param->{resultCallback};
-  my $sendData = $param->{sendData};
 
   ### decrypt data
   my $decrypted_data = RainbirdController_DecryptData($hash, $data, RainbirdController_ReadPassword($hash));
   if(not defined($decrypted_data))
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: encrypted_data not defined";
-    return;
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: encrypted_data not defined";
+    return undef;
   }
 
   ### create structure from json string
@@ -2538,8 +2618,8 @@ sub RainbirdController_ResponseProcessing($$)
 
   if ($@)
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: JSON error while request: $@";
-    return;
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: JSON error while request: $@";
+    return undef;
   }
   
   if( not defined( $decode_json ) or
@@ -2547,15 +2627,15 @@ sub RainbirdController_ResponseProcessing($$)
     not defined( $decode_json->{result} ) or
     not defined( $decode_json->{result}->{data} ))
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: no result.data";
-    return;
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: no result.data";
+    return undef;
   }
  
   ### compare requestId with responseId
   if($request_id ne $decode_json->{id})
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: request failed with wrong ResponseId! RequestId \"" . $request_id . "\" but got ResponseId \"" . $decode_json->{id} . "\"";
-    return;	
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: request failed with wrong ResponseId! RequestId \"" . $request_id . "\" but got ResponseId \"" . $decode_json->{id} . "\"";
+    return undef;
   }
   
   ### decode data
@@ -2563,8 +2643,8 @@ sub RainbirdController_ResponseProcessing($$)
   
   if(not defined($decoded))
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: decoded not defined";
-  	return;
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: decoded not defined";
+  	return undef;
   }
 
   ### response
@@ -2572,8 +2652,8 @@ sub RainbirdController_ResponseProcessing($$)
 
   if(not defined($response_id))
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: response not defined";
-    return;
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: response not defined";
+    return undef;
   }
   
   # check id of response message
@@ -2582,23 +2662,17 @@ sub RainbirdController_ResponseProcessing($$)
   {
   	if( $response_id eq "00" )
   	{
-      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
+      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
   	}
   	else
   	{
-      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"";
+      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"";
   	}
   	
-    return;
+    return undef;
   }
 
-  # is there a callback function?
-  if(defined($resultCallback))
-  {
-    Log3 $name, 4, "RainbirdController ($name) - ResponseProcessing: calling lambda function";
-    
-    $resultCallback->($decoded, $sendData);
-  }
+  return $decoded;
 }
 
 #####################################
