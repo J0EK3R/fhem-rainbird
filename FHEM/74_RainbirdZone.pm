@@ -48,15 +48,16 @@ sub RainbirdZone_Set($@);
 sub RainbirdZone_Parse($$);
 sub RainbirdZone_ProcessMessage($$);
 sub RainbirdZone_UpdateState($);
-sub RainbirdZone_GetZoneAvailable($);
-sub RainbirdZone_GetSchedule($);
-sub RainbirdZone_GetZoneActive($);
+sub RainbirdZone_UpdateZoneAvailable($);
+sub RainbirdZone_UpdateSchedule($);
+sub RainbirdZone_UpdateIrrigation($);
+sub RainbirdZone_UpdateZoneActive($);
 
 ### internal tool functions
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.7.1';
+my $VERSION = '1.7.2';
 
 my $DefaultIrrigationTime = 10;
 
@@ -173,8 +174,8 @@ sub RainbirdZone_Define($$)
   readingsSingleUpdate( $hash, 'state', 'initialized', 1 );
 
   ### update -> values are fetched from internals of attached RainbirdController
-  RainbirdZone_GetZoneAvailable($hash);
-  RainbirdZone_GetZoneActive($hash);
+  RainbirdZone_UpdateZoneAvailable($hash);
+  RainbirdZone_UpdateZoneActive($hash);
 
   Log3 $name, 3, "RainbirdZone ($name) - defined RainbirdZone with ZONEID: $zoneId";
 
@@ -314,7 +315,7 @@ sub RainbirdZone_Set($@)
     return "usage: $cmd [opt: <minutes>]"
       if ( @args > 1 );
 
-  	### default value from internals
+    ### default value from internals
     my $minutes = $hash->{IRRIGATIONTIME};
     
     ### if there is a parameter
@@ -431,9 +432,9 @@ sub RainbirdZone_Parse($$)
     }
 
     ### dispatch message to any existing RainbirdZone module
-  	if($json_message->{"identifier"} eq "Rainbird") # additional (unnecessary) check
-  	{
-  	  while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
+    if($json_message->{"identifier"} eq "Rainbird") # additional (unnecessary) check
+    {
+      while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
       {
         my $rainbirdZone_name = $hash->{NAME};
         Log3 $rainbirdController_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
@@ -485,16 +486,23 @@ sub RainbirdZone_ProcessMessage($$)
   ### CurrentStationsActiveResponse
   if(lc $type eq lc "CurrentStationsActiveResponse")
   {
-  	### "{"response":"BF","type":"CurrentStationsActiveResponse","identifier":"Rainbird","pageNumber":0,"activeStations":134217728}"
-  	
-  	### just trigger function -> values are fetched from internals of attached RainbirdController
-  	RainbirdZone_UpdateState($hash);
+    ### "{"response":"BF","type":"CurrentStationsActiveResponse","identifier":"Rainbird","pageNumber":0,"activeStations":134217728}"
+
+    ### just trigger function -> values are fetched from internals of attached RainbirdController
+    RainbirdZone_UpdateState($hash);
+  }
+
+  ### GetIrrigationStateResponse
+  if(lc $type eq lc "GetIrrigationStateResponse")
+  {
+    ### just trigger function -> values are fetched from internals of attached RainbirdController
+    RainbirdZone_UpdateState($hash);
   }
 
   ### AvailableStationsResponse
   elsif(lc $type eq lc "AvailableStationsResponse")
   {
-  	### "{"identifier":"Rainbird","pageNumber":0,"setStations":4278190080,"type":"AvailableStationsResponse","response":"83"}"
+    ### "{"identifier":"Rainbird","pageNumber":0,"setStations":4278190080,"type":"AvailableStationsResponse","response":"83"}"
 
     ### just trigger function -> values are fetched from internals of attached RainbirdController
     RainbirdZone_UpdateState($hash);
@@ -536,15 +544,15 @@ sub RainbirdZone_UpdateState($)
 
   Log3 $name, 5, "RainbirdZone ($name) - UpdateState was called";
   
-  RainbirdZone_GetZoneActive($hash);
-  RainbirdZone_GetZoneAvailable($hash);
-  RainbirdZone_GetSchedule($hash);
+  RainbirdZone_UpdateZoneActive($hash);
+  RainbirdZone_UpdateZoneAvailable($hash);
+  RainbirdZone_UpdateSchedule($hash);
 }
 
 #####################################
-# GetZoneActive( $hash )
+# UpdateZoneActive( $hash )
 #####################################
-sub RainbirdZone_GetZoneActive($)
+sub RainbirdZone_UpdateZoneActive($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
@@ -554,17 +562,22 @@ sub RainbirdZone_GetZoneActive($)
   my $activeZoneMask = $hash->{IODev}->{ZONEACTIVEMASK};
   my $mask = $hash->{ZONEMASK};
   my $result = $mask & $activeZoneMask;
-  
+
+  my $activeZoneSecondsLeft = $hash->{IODev}->{ZONEACTIVESECONDSLEFT};
+  $activeZoneSecondsLeft = 0 if(!defined($activeZoneSecondsLeft));
+
   readingsBeginUpdate($hash);
   
   if($result)
   {
-    readingsBulkUpdate( $hash, 'irrigating', 1, 1 );
     readingsBulkUpdate( $hash, 'state', 'irrigating', 1 );
+    readingsBulkUpdate( $hash, 'irrigating', 1, 1 );
+    readingsBulkUpdate( $hash, 'irrigationSecondsLeft', $activeZoneSecondsLeft, 1 );
   }
   else
   {
     readingsBulkUpdate( $hash, 'irrigating', 0, 1 );
+    readingsBulkUpdate( $hash, 'irrigationSecondsLeft', 0, 1 );
     
     if($hash->{AVAILABLE} == 1)
     {
@@ -577,9 +590,9 @@ sub RainbirdZone_GetZoneActive($)
 }
 
 #####################################
-# GetZoneAvailable( $hash )
+# UpdateZoneAvailable( $hash )
 #####################################
-sub RainbirdZone_GetZoneAvailable($)
+sub RainbirdZone_UpdateZoneAvailable($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
@@ -596,7 +609,7 @@ sub RainbirdZone_GetZoneAvailable($)
   
   if($result)
   {
-  	### set internal
+    ### set internal
     $hash->{AVAILABLE} = 1;
 
     #readingsBulkUpdate( $hash, 'available', 1, 1 );
@@ -616,9 +629,9 @@ sub RainbirdZone_GetZoneAvailable($)
 }
 
 #####################################
-# RainbirdZone_GetSchedule( $hash )
+# UpdateSchedule( $hash )
 #####################################
-sub RainbirdZone_GetSchedule($)
+sub RainbirdZone_UpdateSchedule($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
@@ -628,21 +641,26 @@ sub RainbirdZone_GetSchedule($)
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
   {
-    my $schedule = $hash->{IODev}{helper}{'Zone' . $hash->{ZONEID}}; 
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $hash->{ZONEID}}{'Schedule'}; 
 
-    if(defined($schedule))
+    if(defined($zoneSchedule))
     {
+      ### save schedule hash as internals
+      $hash->{helper}{zoneSchedule} = $zoneSchedule;
+      
       readingsBeginUpdate($hash);
-      readingsBulkUpdate( $hash, 'scheduletimespan', $schedule->{"timespan"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduletimer1', $schedule->{"timer1"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduletimer2', $schedule->{"timer2"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduletimer3', $schedule->{"timer3"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduletimer4', $schedule->{"timer4"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduletimer5', $schedule->{"timer5"}, 1 );
-      readingsBulkUpdate( $hash, 'schedulemode', $schedule->{"mode"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduleweekday', $schedule->{"weekday"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduleinterval', $schedule->{"interval"}, 1 );
-      readingsBulkUpdate( $hash, 'scheduleintervaloffset', $schedule->{"intervaloffset"}, 1 );
+
+      readingsBulkUpdate( $hash, 'scheduletimespan', $zoneSchedule->{"timespan"}, 1 ) if( defined( $zoneSchedule->{"timespan"} ));
+      readingsBulkUpdate( $hash, 'scheduletimer1', $zoneSchedule->{"timer1"}, 1 ) if( defined( $zoneSchedule->{"timer1"} ));
+      readingsBulkUpdate( $hash, 'scheduletimer2', $zoneSchedule->{"timer2"}, 1 ) if( defined( $zoneSchedule->{"timer2"} ));
+      readingsBulkUpdate( $hash, 'scheduletimer3', $zoneSchedule->{"timer3"}, 1 ) if( defined( $zoneSchedule->{"timer3"} ));
+      readingsBulkUpdate( $hash, 'scheduletimer4', $zoneSchedule->{"timer4"}, 1 ) if( defined( $zoneSchedule->{"timer4"} ));
+      readingsBulkUpdate( $hash, 'scheduletimer5', $zoneSchedule->{"timer5"}, 1 ) if( defined( $zoneSchedule->{"timer5"} ));
+      readingsBulkUpdate( $hash, 'schedulemode', $zoneSchedule->{"mode"}, 1 ) if( defined( $zoneSchedule->{"mode"} ));
+      readingsBulkUpdate( $hash, 'scheduleweekday', $zoneSchedule->{"weekday"}, 1 ) if( defined( $zoneSchedule->{"weekday"} ));
+      readingsBulkUpdate( $hash, 'scheduleinterval', $zoneSchedule->{"interval"}, 1 ) if( defined( $zoneSchedule->{"interval"} ));
+      readingsBulkUpdate( $hash, 'scheduleintervaldaysleft', $zoneSchedule->{"intervaldaysleft"}, 1 ) if( defined( $zoneSchedule->{"intervaldaysleft"} ));
+
       readingsEndUpdate( $hash, 1 );
     }
   }

@@ -41,10 +41,10 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.7.1';
+my $VERSION = '1.7.2';
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
-my $DefaultTimeout = 20;
+my $DefaultTimeout = 5;
 my $DefaultRetries = 3;
 
 ### Forward declarations
@@ -61,9 +61,8 @@ sub RainbirdController_Get($@);
 
 sub RainbirdController_TimerStop($);
 sub RainbirdController_TimerRestart($);
-sub RainbirdController_TimerCallback($);
+sub RainbirdController_TimerLoop($);
 
-sub RainbirdController_GetDeviceInfo($;$);
 sub RainbirdController_GetDeviceState($;$);
 
 sub RainbirdController_GetModelAndVersion($;$);
@@ -83,6 +82,7 @@ sub RainbirdController_GetRainDelay($;$);
 sub RainbirdController_SetRainDelay($$;$);
 
 sub RainbirdController_GetCurrentIrrigation($;$);
+sub RainbirdController_GetActiveStation($;$);
 sub RainbirdController_GetIrrigationState($;$);
 ## Zone
 sub RainbirdController_ZoneIrrigate($$$;$);
@@ -98,6 +98,8 @@ sub RainbirdController_TestCMD($$$;$);
 sub RainbirdController_TestRAW($$;$);
 
 ### internal tool functions
+sub RainbirdController_CallIfLambda($$$$);
+
 sub RainbirdController_GetZoneFromRaw($);
 sub RainbirdController_GetAvailableZoneCountFromRaw($);
 sub RainbirdController_GetAvailableZoneMaskFromRaw($);
@@ -128,7 +130,7 @@ my %KnownModels = (
 ### format of a command entry
 ### command name:                 "CurrentDateSetRequest" => 
 ###                               {
-###	command number as string:       "command" => "13", 
+### command number as string:       "command" => "13", 
 ### [opt] first parameter charlen:  "parameter1" => 2, 
 ### [opt] second parameter charlen: "parameter2" => 1, "
 ### [opt] third parameter charlen:  "parameter3" => 3, 
@@ -138,15 +140,15 @@ my %KnownModels = (
 my %ControllerCommands = (
   "ModelAndVersionRequest" => {"command" => "02", "response" => "82", "length" => 1},
   "AvailableStationsRequest" => {"command" => "03", "response" => "83", "length" => 2, 
-  	"parameter1" => 2},
+    "parameter1" => 2},
   "CommandSupportRequest" => {"command" => "04", "response" => "84", "length" => 2, 
-  	"parameter1" => 2}, # command like "04"
+    "parameter1" => 2}, # command like "04"
   "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
   "Unknown06Request" => {"command" => "06", "response" => "86", "length" => 5, 
-  	"parameter1" => 2, 
-  	"parameter2" => 1, 
-  	"parameter3" => 1, 
-  	"parameter4" => 1},
+    "parameter1" => 2, 
+    "parameter2" => 1, 
+    "parameter3" => 1, 
+    "parameter4" => 1},
   "Unknown07Request" => {"command" => "07", "response" => "86", "length" => 5, 
     "parameter1" => 2, 
     "parameter2" => 2, 
@@ -154,57 +156,67 @@ my %ControllerCommands = (
     "parameter4" => 2},
   "CurrentTimeGetRequest" => {"command" => "10", "response" => "90", "length" => 1},
   "CurrentTimeSetRequest" => {"command" => "11", "response" => "01", "length" => 4, 
-  	"parameter1" => 2, 
-  	"parameter2" => 2, 
-  	"parameter3" => 2},
+    "parameter1" => 2, 
+    "parameter2" => 2, 
+    "parameter3" => 2},
   "CurrentDateGetRequest" => {"command" => "12", "response" => "92", "length" => 1},
   "CurrentDateSetRequest" => {"command" => "13", "response" => "01", "length" => 4, 
-  	"parameter1" => 2, 
-  	"parameter2" => 1, 
-  	"parameter3" => 3},
+    "parameter1" => 2, 
+    "parameter2" => 1, 
+    "parameter3" => 3},
   "CurrentScheduleRequest" => {"command" => "20","response" => "A0", "length" => 3, 
     "parameter1" => 4},  # ZoneId
   "Unknown21Request" => {"command" => "21", "response" => "01", "length" => 4, 
-  	"parameter1" => 2, 
-  	"parameter2" => 1, 
-  	"parameter3" => 1},
-  "WaterBudgetRequest" => {"command" => "30", "response" => "B0", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
+    "parameter1" => 2, 
+    "parameter2" => 1, 
+    "parameter3" => 1},
+  # not supported
+  "WaterBudgetRequest" => {"command" => "30", "response" => "B0", "length" => 2,  
+    "parameter1" => 2}, 
   "Unknown31Request" => {"command" => "31", "response" => "85", "length" => 4, 
-  	"parameter1" => 2, 
-  	"parameter2" => 2, 
-  	"parameter3" => 2},
-  "ZonesSeasonalAdjustFactorRequest" => {"command" => "32", "response" => "B2", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
+    "parameter1" => 2, 
+    "parameter2" => 2, 
+    "parameter3" => 2},
+  # not supported
+  "ZonesSeasonalAdjustFactorRequest" => {"command" => "32", "response" => "B2", "length" => 2,  
+    "parameter1" => 2}, 
   "RainDelayGetRequest" => {"command" => "36", "response" => "B6", "length" => 1},
   "RainDelaySetRequest" => {"command" => "37", "response" => "01", "length" => 3, 
-  	"parameter1" => 4},
-  "ManuallyRunProgramRequest" => {"command" => "38", "response" => "01", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
+    "parameter1" => 4},
+  # not supported
+  "ManuallyRunProgramRequest" => {"command" => "38", "response" => "01", "length" => 2,
+    "parameter1" => 2}, 
   "ManuallyRunStationRequest" => {"command" => "39", "response" => "01", "length" => 4, 
-  	"parameter1" => 4,  # ZoneId
-  	"parameter2" => 2}, # irrigation timespan in minutes
+    "parameter1" => 4,  # ZoneId
+    "parameter2" => 2}, # irrigation timespan in minutes
   "TestStationsRequest" => {"command" => "3A", "response" => "01", "length" => 2, 
-  	"parameter1" => 2},
-#  "SupportedRequest" => {"command" => "3B", "response" => "85", "length" => 1},
-#  "SupportedRequest" => {"command" => "3D", "response" => "85", "length" => 1},
+    "parameter1" => 2},
+  "GetIrrigationStateRequest" => {"command" => "3B", "response" => "BB", "length" => 2,
+    "parameter1" => 2},
+  "Unknown3DRequest" => {"command" => "3D", "response" => "DB", "length" => 2,
+    "parameter1" => 2},
   "CurrentRainSensorStateRequest" => {"command" => "3E", "response" => "BE", "length" => 1},
   "CurrentStationsActiveRequest" => {"command" => "3F", "response" => "BF", "length" => 2, 
-  	"parameter1" => 2},
+    "parameter1" => 2},
   "StopIrrigationRequest" => {"command" => "40", "response" => "01", "length" => 1},
   "Unknown41Request" => {"command" => "41", "parameter1" => 2, "response" => "01", "length" => 2},
-  "AdvanceStationRequest" => {"command" => "42", "response" => "01", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
+  # not supported
+  "AdvanceStationRequest" => {"command" => "42", "response" => "01", "length" => 2,
+    "parameter1" => 2}, 
   "CurrentIrrigationStateRequest" => {"command" => "48", "response" => "C8", "length" => 1},
-  "CurrentControllerStateSet" => {"command" => "49", "response" => "01", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
-  "ControllerEventTimestampRequest" => {"command" => "4A", "response" => "CA", "length" => 2, # not supported 
-  	"parameter1" => 2}, 
-  "StackManuallyRunStationRequest" => {"command" => "4B", "response" => "01", "length" => 4, # not supported 
-  	"parameter1" => 2, 
-  	"parameter2" => 1, 
-  	"parameter3" => 1}, 
-  "CombinedControllerStateRequest" => {"command" => "4C", "response" => "CC","length" => 1 }, # not supported
+  # not supported
+  "CurrentControllerStateSet" => {"command" => "49", "response" => "01", "length" => 2, 
+    "parameter1" => 2}, 
+  # not supported
+  "ControllerEventTimestampRequest" => {"command" => "4A", "response" => "CA", "length" => 2, 
+    "parameter1" => 2}, 
+  # not supported
+  "StackManuallyRunStationRequest" => {"command" => "4B", "response" => "01", "length" => 4, 
+    "parameter1" => 2, 
+    "parameter2" => 1, 
+    "parameter3" => 1}, 
+  # not supported
+  "CombinedControllerStateRequest" => {"command" => "4C", "response" => "CC","length" => 1 },
   "Unknown50Request" => {"command" => "50", "response" => "01", "length" => 1},
   "Unknown51Request" => {"command" => "51", "response" => "01", "length" => 1},
   "Unknown52Request" => {"command" => "52", "response" => "01", "length" => 1},
@@ -214,7 +226,7 @@ my %ControllerCommands = (
 ### format of a response entry
 ### response number as string: "00" => 
 ###                            {
-### total bytelength	         "length" =>  3, 
+### total bytelength             "length" =>  3, 
 ### response name                "type" => "NotAcknowledgeResponse", 
 ### [opt] first parameter name   "commandEcho" => 
 ###                              {
@@ -237,84 +249,97 @@ my %ControllerCommands = (
 
 my %ControllerResponses = (
   "00" => {"length" =>  3, "type" => "NotAcknowledgeResponse", 
-   	"commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
-   	"NAKCode" => {"position" => 4, "length" => 2, "knownvalues" => {"1" => "[1]: command not supported", "2" => "[2]: wrong number of parameters", "4" => "[4]: illegal parameter",} } },
+    "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
+    "NAKCode" => {"position" => 4, "length" => 2, "knownvalues" => {"1" => "[1]: command not supported", "2" => "[2]: wrong number of parameters", "4" => "[4]: illegal parameter",} } },
   "01" => {"length" =>  2, "type" => "AcknowledgeResponse", 
-   	"commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"} },
+    "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"} },
   "82" => {"length" =>  5, "type" => "ModelAndVersionResponse", 
-   	"modelID" => {"position" => 2, "length" => 4}, 
-   	"protocolRevisionMajor" => {"position" => 6, "length" => 2}, 
-   	"protocolRevisionMinor" => {"position" => 8, "length" => 2} },
+    "modelID" => {"position" => 2, "length" => 4}, 
+    "protocolRevisionMajor" => {"position" => 6, "length" => 2}, 
+    "protocolRevisionMinor" => {"position" => 8, "length" => 2} },
   "83" => {"length" =>  6, "type" => "AvailableStationsResponse", 
-   	"pageNumber" => {"position" => 2, "length" => 2}, 
-   	"setStations" => {"position" => 4, "length" => 8} },
+    "pageNumber" => {"position" => 2, "length" => 2}, 
+    "setStations" => {"position" => 4, "length" => 8} },
   "84" => {"length" =>  3, "type" => "CommandSupportResponse", 
-   	"commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
-   	"support" => {"position" => 4, "length" => 2} },
+    "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
+    "support" => {"position" => 4, "length" => 2} },
   "85" => {"length" =>  9, "type" => "SerialNumberResponse", 
-   	"serialNumber" => {"position" => 2, "length" => 16} },
-   "86" => {"length" =>  9, "type" => "Unknown06Response", 
-   	"result1" => {"position" => 2, "length" => 8, "format" => "%X"}, 
-   	"result2" => {"position" => 10, "length" => 8, "format" => "%X"}},
+    "serialNumber" => {"position" => 2, "length" => 16} },
+  "86" => {"length" =>  9, "type" => "Unknown06Response", 
+    "result1" => {"position" => 2, "length" => 8, "format" => "%X"}, 
+    "result2" => {"position" => 10, "length" => 8, "format" => "%X"}},
   "90" => {"length" =>  4, "type" => "CurrentTimeGetResponse", 
-   	"hour" => {"position" => 2, "length" => 2}, 
-   	"minute" => {"position" => 4, "length" => 2}, 
-   	"second" => {"position" => 6, "length" => 2} },
+    "hour" => {"position" => 2, "length" => 2}, 
+    "minute" => {"position" => 4, "length" => 2}, 
+    "second" => {"position" => 6, "length" => 2} },
   "92" => {"length" =>  4, "type" => "CurrentDateGetResponse", 
-   	"day" => {"position" => 2, "length" => 2}, 
-   	"month" => {"position" => 4, "length" => 1}, 
-   	"year" => {"position" => 5, "length" => 3} },
-  "A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
-   	"zoneId"         => {"position" =>  2, "length" => 4}, 
-   	"timespan"       => {"position" =>  6, "length" => 2}, 
-   	"timer1"         => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-    "timer2"         => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-    "timer3"         => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-    "timer4"         => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
-    "timer5"         => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-    "param1"         => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
-    "mode"           => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
-    "weekday"        => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
-    "interval"       => {"position" => 24, "length" => 2}, 
-    "intervaloffset" => {"position" => 26, "length" => 2}},
+    "day" => {"position" => 2, "length" => 2}, 
+    "month" => {"position" => 4, "length" => 1}, 
+    "year" => {"position" => 5, "length" => 3} },
+  "A0" => {"length" =>  14, "type" => "CurrentScheduleResponse", 
+    "zoneId"           => {"position" =>  2, "length" => 4}, 
+    "timespan"         => {"position" =>  6, "length" => 2}, 
+    "timer1"           => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    "timer2"           => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    "timer3"           => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    "timer4"           => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
+    "timer5"           => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+    "param1"           => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
+    "mode"             => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
+    "weekday"          => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
+    "interval"         => {"position" => 24, "length" => 2}, 
+    "intervaldaysleft" => {"position" => 26, "length" => 2}},
   "B0" => {"length" =>  4, "type" => "WaterBudgetResponse", 
-   	"programCode" => {"position" => 2, "length" => 2}, 
-   	"seasonalAdjust" => {"position" => 4, "length" => 4} },
+    "programCode" => {"position" => 2, "length" => 2}, 
+    "seasonalAdjust" => {"position" => 4, "length" => 4} },
   "B2" => {"length" => 18, "type" => "ZonesSeasonalAdjustFactorResponse", 
-   	"programCode" => {"position" => 2, "length" => 2}, 
-   	"stationsSA" => {"position" => 4, "length" => 32} },
-  "BE" => {"length" =>  2, "type" => "CurrentRainSensorStateResponse", 
-   	"sensorState" => {"position" => 2, "length" => 2} },
-  "BF" => {"length" =>  6, "type" => "CurrentStationsActiveResponse", 
-   	"pageNumber" => {"position" => 2, "length" => 2}, 
-   	"activeStations" => {"position" => 4, "length" => 8} },
+    "programCode" => {"position" => 2, "length" => 2}, 
+    "stationsSA" => {"position" => 4, "length" => 32} },
   "B6" => {"length" =>  3, "type" => "RainDelaySettingResponse", 
-   	"delaySetting" => {"position" => 2, "length" => 4} },
+    "delaySetting" => {"position" => 2, "length" => 4} },
+  "BB" => {"length" =>  10, "type" => "GetIrrigationStateResponse", 
+    "unknown2" => {"position" => 2, "length" => 2},
+    "unknown4" => {"position" => 4, "length" => 2},
+    "unknown6" => {"position" => 6, "length" => 2},
+    "unknown8" => {"position" => 8, "length" => 2},
+    "unknown10" => {"position" => 10, "length" => 2},
+    "activeZone" => {"position" => 12, "length" => 2},
+    "unknown14" => {"position" => 14, "length" => 2},
+    "secondsLeft" => {"position" => 16, "length" => 4}, },
+  "BD" => {"length" =>  6, "type" => "Unknown3DResponse", 
+    "sensorState" => {"position" => 2, "length" => 2} },
+  "BE" => {"length" =>  2, "type" => "CurrentRainSensorStateResponse", 
+    "sensorState" => {"position" => 2, "length" => 2} },
+  "BF" => {"length" =>  6, "type" => "CurrentStationsActiveResponse", 
+    "pageNumber" => {"position" => 2, "length" => 2}, 
+    "activeStations" => {"position" => 4, "length" => 8} },
   "C8" => {"length" =>  2, "type" => "CurrentIrrigationStateResponse", 
-   	"irrigationState" => {"position" => 2, "length" => 2} },
+    "irrigationState" => {"position" => 2, "length" => 2} },
   "CA" => {"length" =>  6, "type" => "ControllerEventTimestampResponse", 
-   	"eventId" => {"position" => 2, "length" => 2}, 
-   	"timestamp" => {"position" => 4, "length" => 8} },
+    "eventId" => {"position" => 2, "length" => 2}, 
+    "timestamp" => {"position" => 4, "length" => 8} },
   "CC" => {"length" => 16, "type" => "CombinedControllerStateResponse", 
-   	"hour" => {"position" => 2, "length" => 2}, 
-   	"minute" => {"position" => 4, "length" => 2}, 
-   	"second" => {"position" => 6, "length" => 2}, 
-   	"day" => {"position" => 8, "length" => 2}, 
-   	"month" => {"position" => 10, "length" => 1}, 
-   	"year" => {"position" => 11, "length" => 3}, 
-   	"delaySetting" => {"position" => 14, "length" => 4}, 
-   	"sensorState" => {"position" => 18, "length" => 2}, 
-   	"irrigationState" => {"position" => 20, "length" => 2}, 
-   	"seasonalAdjust" => {"position" => 22, "length" => 4}, 
-   	"remainingRuntime" => {"position" => 26, "length" => 4}, 
-   	"activeStation" => {"position" => 30, "length" => 2} }
+    "hour" => {"position" => 2, "length" => 2}, 
+    "minute" => {"position" => 4, "length" => 2}, 
+    "second" => {"position" => 6, "length" => 2}, 
+    "day" => {"position" => 8, "length" => 2}, 
+    "month" => {"position" => 10, "length" => 1}, 
+    "year" => {"position" => 11, "length" => 3}, 
+    "delaySetting" => {"position" => 14, "length" => 4}, 
+    "sensorState" => {"position" => 18, "length" => 2}, 
+    "irrigationState" => {"position" => 20, "length" => 2}, 
+    "seasonalAdjust" => {"position" => 22, "length" => 4}, 
+    "remainingRuntime" => {"position" => 26, "length" => 4}, 
+    "activeStation" => {"position" => 30, "length" => 2} }
 );
 
 my $DEFAULT_PAGE = 0;
 my $BLOCK_SIZE = 16;
 my $INTERRUPT = "\x00";
 my $PAD = "\x10";
+
 my $CMDSUPPORTPREFIX = "CMDSUPPORT_"; # hide with prefix "."
+my $CMDSUPPORT_3F =  $CMDSUPPORTPREFIX . '3F';
 
 ### HTML hedaer
 my $HEAD = 
@@ -757,7 +782,7 @@ sub RainbirdController_Set($@)
     my $zone = $args[0];
     my $minutes = $args[1];
     
-    RainbirdController_IrrigateZone($hash, $zone, $minutes);
+    RainbirdController_ZoneIrrigate($hash, $zone, $minutes);
   } 
 
   ### RainDelay
@@ -836,12 +861,7 @@ sub RainbirdController_Set($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    # get static deviceInfo and start timer on callback
-    my $callback = sub 
-    {
-      RainbirdController_GetDeviceState($hash); 
-    };
-    RainbirdController_GetDeviceInfo($hash, $callback );
+    RainbirdController_GetDeviceState($hash);
   } 
 
   ### FactoryReset
@@ -958,7 +978,8 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetDeviceInfo($hash);
+    #RainbirdController_GetDeviceInfo($hash);
+    RainbirdController_GetDeviceState($hash);
   } 
   
   ### ModelAndVersion
@@ -1039,7 +1060,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetIrrigationState($hash);
+    RainbirdController_GetActiveStation($hash);
   } 
   
   ### ZoneSchedule
@@ -1116,8 +1137,6 @@ sub RainbirdController_TimerRestart($)
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
 
-  Log3 $name, 4, "RainbirdController ($name) - timerRestart";
-
   RainbirdController_TimerStop($hash);
 
   if ( IsDisabled($name) )
@@ -1136,23 +1155,20 @@ sub RainbirdController_TimerRestart($)
     return;
   } 
 
+  Log3 $name, 4, "RainbirdController ($name) - timerRestart";
+
   ### if RainbirdController_Function fails no callback function is called
   ### so reload timer for next try
   InternalTimer( gettimeofday() + $hash->{RETRYINTERVAL}, \&RainbirdController_TimerRestart, $hash );
   $hash->{TIMERON} = 1;
 
-  # get static deviceInfo and start timer on callback
-  my $startTimer = sub 
-  {
-  	 RainbirdController_TimerCallback($hash); 
-  };
-  RainbirdController_GetDeviceInfo($hash, $startTimer );
+  RainbirdController_TimerLoop($hash); 
 }
 
 #####################################
 # callback function of the internal timer
 #####################################
-sub RainbirdController_TimerCallback($)
+sub RainbirdController_TimerLoop($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
@@ -1163,56 +1179,30 @@ sub RainbirdController_TimerCallback($)
   {
     readingsSingleUpdate( $hash, 'state', 'disabled', 1 );
 
-    Log3 $name, 3, "RainbirdController ($name) - timerCallback: device is disabled";
+    Log3 $name, 3, "RainbirdController ($name) - TimerLoop: device is disabled";
     return;
   } 
 
-  Log3 $name, 4, "RainbirdController ($name) - timerCallback";
+  Log3 $name, 4, "RainbirdController ($name) - TimerLoop";
 
   ### if RainbirdController_Function fails no callback function is called
   ### so reload timer for next try
-  InternalTimer( gettimeofday() + $hash->{RETRYINTERVAL}, \&RainbirdController_TimerCallback, $hash );
+  InternalTimer( gettimeofday() + $hash->{RETRYINTERVAL}, \&RainbirdController_TimerLoop, $hash );
   $hash->{TIMERON} = 1;
   
+  ### calculate nextInterval
   my $nextInterval = gettimeofday() + $hash->{INTERVAL};
+  
+  ### callback to set the next interval on success
   my $reloadTimer = sub 
   {
     ### reload timer
     RemoveInternalTimer($hash);
-    InternalTimer( $nextInterval, \&RainbirdController_TimerCallback, $hash );
+    InternalTimer( $nextInterval, \&RainbirdController_TimerLoop, $hash );
     $hash->{TIMERON} = 1;
   };
 
   RainbirdController_GetDeviceState($hash, $reloadTimer);
-}
-
-#####################################
-# gets the static values of the device
-#####################################
-sub RainbirdController_GetDeviceInfo($;$)
-{
-  my ( $hash, $callback ) = @_;
-  my $name = $hash->{NAME};
-
-  Log3 $name, 4, "RainbirdController ($name) - GetDeviceInfo";
-
-  # definition of the callback chain
-  # each function calls the given callback in their resultcallback
-  my $runCallback = sub 
-  {
-    # if there is a callback then call it
-    if( defined($callback))
-    {
-      Log3 $name, 4, "RainbirdController ($name) - GetDeviceInfo callback";
-      $callback->();
-    }
-  };  
-
-  my $getModelAndVersion = sub { RainbirdController_GetModelAndVersion($hash, $runCallback); };
-  my $getAvailableZones = sub { RainbirdController_GetAvailableZones($hash, $getModelAndVersion); };
-  my $getSerialNumber = sub { RainbirdController_GetSerialNumber($hash, $getAvailableZones); };
-
-  $getSerialNumber->($hash);
 }
 
 #####################################
@@ -1228,31 +1218,89 @@ sub RainbirdController_GetDeviceState($;$)
   # definition of the callback chain
   # each function calls the given callback in their resultcallback
   
-  my $currentZone = 1;
-  my $getScheduleCallback = undef;
-  $getScheduleCallback = sub 
+  my $runCallback = sub 
   {
-  	if($currentZone <= $hash->{ZONESAVAILABLECOUNT})
-  	{
-  	  RainbirdController_ZoneGetSchedule($hash, $currentZone, $getScheduleCallback);
-  	  $currentZone++;
-  	}
     # if there is a callback then call it
-    elsif( defined($callback))
+    if( defined($callback) )
     {
       Log3 $name, 4, "RainbirdController ($name) - GetDeviceState callback";
       $callback->();
     }
-  };     
+  };  
   
-  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getScheduleCallback); };
+  ### iterate all available zones
+  my $getScheduleCallback = undef;
+  my $currentZone = 0;
+  $getScheduleCallback = sub 
+  {
+    $currentZone++;
+    if($currentZone <= $hash->{ZONESAVAILABLECOUNT})
+    {
+      my $zoneGetSchedule = sub { RainbirdController_ZoneGetSchedule($hash, $currentZone, $getScheduleCallback); };
+      $zoneGetSchedule->();
+    }
+    else
+    {
+      $runCallback->();
+    }
+  };     
+
+  ## only call $getActiveStation if $getIrrigationState is not supported: 
+  ### check-function if CMD_3F (-> GetIrrigationState) support was checked or ist true
+  my $CMDSUPPORT_3F_Check = sub {return (!defined($hash->{$CMDSUPPORT_3F}) or $hash->{$CMDSUPPORT_3F} == 1); };
+  my $getActiveStation = RainbirdController_CallIfLambda($hash, sub { return !$CMDSUPPORT_3F_Check->() }, \&RainbirdController_GetActiveStation, $getScheduleCallback);
+  my $getIrrigationState = RainbirdController_CallIfLambda($hash, sub { return $CMDSUPPORT_3F_Check->() }, \&RainbirdController_GetIrrigationState, $getActiveStation);
+  
+  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getIrrigationState); };
   my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
   my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
   my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
-  my $getIrrigationState = sub { RainbirdController_GetIrrigationState($hash, $getCurrentIrrigation); };
-  my $getRainDelay = sub { RainbirdController_GetRainDelay($hash, $getIrrigationState); };
+  my $getRainDelay = sub { RainbirdController_GetRainDelay($hash, $getCurrentIrrigation); };
 
-  $getRainDelay->($hash);
+  ### static info - only get once:
+  ### skipped by RainbirdController_CallIfLambda if condition is false
+  my $getModelAndVersion = RainbirdController_CallIfLambda($hash, !defined( $hash->{MODELID} ), \&RainbirdController_GetModelAndVersion, $getRainDelay);
+  my $getAvailableZones = RainbirdController_CallIfLambda($hash, !defined($hash->{ZONESAVAILABLE}), \&RainbirdController_GetAvailableZones, $getModelAndVersion);
+  my $getSerialNumber = RainbirdController_CallIfLambda($hash, !defined($hash->{SERIALNUMBER}), \&RainbirdController_GetSerialNumber, $getAvailableZones);
+
+  $getSerialNumber->($hash);
+}
+
+#####################################
+# CallIfLambda
+#####################################
+sub RainbirdController_CallIfLambda($$$$)
+{
+  my ( $hash, $condition, $conditionCallback, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  my $lambda = sub
+  {
+    my $checkedCondition;
+    my $conditionType = ref($condition);
+    
+    ### check if $condition is a function to call or a value
+    if($conditionType eq 'CODE')
+    {
+      $checkedCondition = $condition->();
+    }
+    else
+    {
+      $checkedCondition = $condition;
+    }
+
+    ### if $condition is true then call $conditionCallback else call $callback 
+    if($checkedCondition and
+      defined($conditionCallback))
+    {
+      $conditionCallback->($hash, $callback);
+    }
+    elsif(defined($callback))
+    {
+      $callback->($hash);
+    }
+  };
+  return $lambda;
 }
 
 #####################################
@@ -1280,8 +1328,8 @@ sub RainbirdController_GetModelAndVersion($;$)
 
       if( defined($result->{"modelID"}) )
       {
-      	my $modelId = $result->{"modelID"};
-      	
+        my $modelId = $result->{"modelID"};
+        
         $hash->{MODELID} = $modelId;
         
         my $model = $KnownModels{$modelId};
@@ -1348,12 +1396,13 @@ sub RainbirdController_GetAvailableZones($;$)
 
       if( defined($result->{"setStations"}) )
       {
-      	my $zonesAvailableCount = RainbirdController_GetAvailableZoneCountFromRaw($result->{"setStations"});
+        my $zonesAvailableCount = RainbirdController_GetAvailableZoneCountFromRaw($result->{"setStations"});
         my $zonesAvailableMask = RainbirdController_GetAvailableZoneMaskFromRaw($result->{"setStations"});
-      	
-      	$hash->{ZONESAVAILABLECOUNT} = $zonesAvailableCount;
+
+        $hash->{ZONESAVAILABLE} = 1;
+        $hash->{ZONESAVAILABLECOUNT} = $zonesAvailableCount;
         $hash->{ZONESAVAILABLEMASK} = $zonesAvailableMask;
-      	
+
         #readingsBulkUpdate( $hash, 'zonesAvailable', $zonesAvailableCount);
       }
       if( defined($result->{"pageNumber"}) )
@@ -1415,8 +1464,8 @@ sub RainbirdController_GetCommandSupport($$;$)
       if( defined($result->{"support"}) and
         defined($result->{"commandEcho"}))
       {
-      	$hash->{$CMDSUPPORTPREFIX . $result->{"commandEcho"}} = $result->{"support"};
-      	
+        $hash->{$CMDSUPPORTPREFIX . $result->{"commandEcho"}} = $result->{"support"};
+
         #readingsBulkUpdate( $hash, 'commandSupport', $result->{"support"}, 1 );
         #readingsBulkUpdate( $hash, 'commandEcho', $result->{"commandEcho"}, 1 );
       }
@@ -1742,7 +1791,7 @@ sub RainbirdController_SetCurrentDate($$$$;$)
 sub RainbirdController_GetCurrentIrrigation($;$)
 {
   # seems not to work: always return a value of "1"
-	
+
   my ( $hash, $callback ) = @_;
   my $name = $hash->{NAME};
   
@@ -1782,9 +1831,9 @@ sub RainbirdController_GetCurrentIrrigation($;$)
 }
 
 #####################################
-# GetIrrigationState
+# GetActiveStation
 #####################################
-sub RainbirdController_GetIrrigationState($;$)
+sub RainbirdController_GetActiveStation($;$)
 {
   my ( $hash, $callback ) = @_;
   my $name = $hash->{NAME};
@@ -1792,14 +1841,14 @@ sub RainbirdController_GetIrrigationState($;$)
   my $command = "CurrentStationsActive";
   my $mask = sprintf("%%0%dX", $ControllerResponses{"BF"}->{"activeStations"}->{"length"});
 
-  Log3 $name, 4, "RainbirdController ($name) - GetIrrigationState mask: $mask";
+  Log3 $name, 4, "RainbirdController ($name) - GetActiveStation mask: $mask";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - GetIrrigationState lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetActiveStation lambda";
     
     if( defined($result) )
     {
@@ -1807,9 +1856,9 @@ sub RainbirdController_GetIrrigationState($;$)
 
       if( defined($result->{"activeStations"}))
       {
-      	my $zoneActive = RainbirdController_GetZoneFromRaw($result->{"activeStations"});
+        my $zoneActive = RainbirdController_GetZoneFromRaw($result->{"activeStations"});
         my $zoneActiveMask = 1 << ($zoneActive - 1);
-      	
+
         $hash->{ZONEACTIVE} = $zoneActive;
         $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
@@ -1826,6 +1875,99 @@ sub RainbirdController_GetIrrigationState($;$)
       }
 
       readingsEndUpdate( $hash, 1 );
+
+      ### encode $result to json string
+      my $jsonString = eval{encode_json($result)};
+
+      if($@)
+      {
+        Log3 $name, 2, "RainbirdController ($name) - GetActiveStation error while request: $@";
+      }
+      else
+      {
+        # dispatch to RainbirdZone::RainbirdZone_Parse()
+        Dispatch( $hash, $jsonString );
+      }
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetActiveStation callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command, $DEFAULT_PAGE );
+}
+
+#####################################
+# GetIrrigationState
+#####################################
+sub RainbirdController_GetIrrigationState($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+    
+  my $command = "GetIrrigationState";
+
+  Log3 $name, 4, "RainbirdController ($name) - GetIrrigationState";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    # "BB" => {"length" =>  10, "type" => "GetIrrigationStateResponse", 
+    #   "unknown2" => {"position" => 2, "length" => 2},
+    #   "unknown4" => {"position" => 4, "length" => 2},
+    #   "unknown6" => {"position" => 6, "length" => 2},
+    #   "unknown8" => {"position" => 8, "length" => 2},
+    #   "unknown10" => {"position" => 10, "length" => 2},
+    #   "activeZone" => {"position" => 12, "length" => 2},
+    #   "unknown14" => {"position" => 14, "length" => 2},
+    #   "secondsLeft" => {"position" => 16, "length" => 4},
+    # },
+
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetIrrigationState lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"activeZone"}))
+      {
+        my $zoneActive = $result->{"activeZone"};
+        my $zoneActiveMask = 1 << ($zoneActive - 1);
+        
+        $hash->{ZONEACTIVE} = $zoneActive;
+        $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
+        
+        readingsBulkUpdate( $hash, 'zoneActive', $zoneActive);
+
+        if( $zoneActive == 0 )
+        {
+          readingsBulkUpdate( $hash, 'state', 'ready', 1 );
+        }
+        else
+        {
+          readingsBulkUpdate( $hash, 'state', 'irrigating', 1 );
+        }  
+      }
+
+      if( defined($result->{"secondsLeft"}))
+      {
+        my $secondsLeft = $result->{"secondsLeft"};
+        $hash->{ZONEACTIVESECONDSLEFT} = $secondsLeft;
+        
+        readingsBulkUpdate( $hash, 'irrigationSecondsLeft', $secondsLeft, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+
+      # save result hash in helper
+      $hash->{helper}{'IrrigationState'} = $result;
 
       ### encode $result to json string
       my $jsonString = eval{encode_json($result)};
@@ -1957,7 +2099,7 @@ sub RainbirdController_ZoneIrrigate($$$;$)
     }
 
     # update reading activeStations
-    RainbirdController_GetIrrigationState($hash, $callback);
+    RainbirdController_GetActiveStation($hash, $callback);
   }; 
     
   # send command
@@ -1990,21 +2132,21 @@ sub RainbirdController_ZoneGetSchedule($$;$)
       readingsEndUpdate( $hash, 1 );
 
       # "A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
-      #     "zoneId"         => {"position" =>  2, "length" => 4}, 
-      #     "timespan"       => {"position" =>  6, "length" => 2}, 
-      #     "timer1"         => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-      #     "timer2"         => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-      #     "timer3"         => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-      #     "timer4"         => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
-      #     "timer5"         => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
-      #     "param1"         => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
-      #     "mode"           => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
-      #     "weekday"        => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
-      #     "interval"       => {"position" => 24, "length" => 2}, 
-      #     "intervaloffset" => {"position" => 26, "length" => 2}},
+      #     "zoneId"           => {"position" =>  2, "length" => 4}, 
+      #     "timespan"         => {"position" =>  6, "length" => 2}, 
+      #     "timer1"           => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer2"           => {"position" => 10, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer3"           => {"position" => 12, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "timer4"           => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
+      #     "timer5"           => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
+      #     "param1"           => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
+      #     "mode"             => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
+      #     "weekday"          => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
+      #     "interval  "       => {"position" => 24, "length" => 2}, 
+      #     "intervaldaysleft" => {"position" => 26, "length" => 2}},
 
       # save result hash in helper
-      $hash->{helper}{'Zone' . $result->{zoneId}} = $result;
+      $hash->{helper}{'Zone' . $result->{zoneId}}{'Schedule'} = $result;
 
       ### encode $result to json string
       my $jsonString = eval{encode_json($result)};
@@ -2097,7 +2239,7 @@ sub RainbirdController_SetProgram($$;$)
     }
 
     # update reading activeStations
-    RainbirdController_GetIrrigationState($hash, $callback);
+    RainbirdController_GetActiveStation($hash, $callback);
   }; 
     
   # send command
@@ -2131,7 +2273,7 @@ sub RainbirdController_StopIrrigation($;$)
     }
 
     # update reading activeStations
-    RainbirdController_GetIrrigationState($hash, $callback);
+    RainbirdController_GetActiveStation($hash, $callback);
   }; 
     
   # send command
@@ -2165,7 +2307,7 @@ sub RainbirdController_FactoryReset($;$)
     }
 
     # update reading activeStations
-    RainbirdController_GetIrrigationState($hash, $callback);
+    RainbirdController_GetActiveStation($hash, $callback);
   }; 
     
   # send command
@@ -2251,7 +2393,7 @@ sub RainbirdController_GetZoneFromRaw($)
   if(not defined($rawintvalue) or
     $rawintvalue == 0)
   {
-  	return 0;
+    return 0;
   }
   
   ### 01000000 -> Zone 1
@@ -2347,7 +2489,7 @@ sub RainbirdController_Command($$$@)
 
   if( defined( $command_set ) )
   {
-  	my $commandString = $command_set->{"command"};
+    my $commandString = $command_set->{"command"};
     my $cmdKey = $CMDSUPPORTPREFIX . $commandString;
   
     ### check if support of command was checked before
@@ -2355,8 +2497,8 @@ sub RainbirdController_Command($$$@)
     {
       ### callback - this function have to be recalled
       my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
-  	
-  	  ### check support of the command und recall this function 
+
+      ### check support of the command und recall this function 
       RainbirdController_GetCommandSupport($hash, "0x" . $commandString, $commandCallback);
       return; # callback is handled
     }
@@ -2393,7 +2535,7 @@ sub RainbirdController_Command($$$@)
     Log3 $name, 4, "RainbirdController ($name) - Command: calling lambda function";
     
     $resultCallback->(undef, undef);
-  }
+  } 
 }
 
 #####################################
@@ -2445,7 +2587,7 @@ sub RainbirdController_Request($$$$)
     
         url       => $uri,
         method    => $method,
-        header    => $header,
+        header    => $header, # for debugging: . "\nRequestId: " . $request_id,
         data      => $payload,
         timeout   => $hash->{TIMEOUT},
         doTrigger => 1,
@@ -2476,7 +2618,7 @@ sub RainbirdController_Request($$$$)
     }
   };
 
-  $sendReceive->($hash->{RETRIES}, $sendReceive)
+  $sendReceive->($hash->{RETRIES}, $sendReceive);
 }
 
 #####################################
@@ -2504,6 +2646,9 @@ sub RainbirdController_ErrorHandling($$$)
   ### else drop...
   if($request_id != $hash->{REQUESTID})
   {
+    $hash->{helper}{RESPONSECOUNT_DROPPED}++;
+    $hash->{RESPONSECOUNT_DROPPED} = $hash->{helper}{RESPONSECOUNT_DROPPED};
+    
     Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: Dropping old response! Current is: $hash->{REQUESTID}";
     return;
   }
@@ -2544,12 +2689,17 @@ sub RainbirdController_ErrorHandling($$$)
   ### no error: process response
   if($errorMsg eq "")
   {
-  	$hash->{helper}{RESPONSESUCCESSCOUNT}++;
-  	$hash->{helper}{RESPONSETOTALTIMESPAN} += $requestResponse_timespan;
+    my $retrystring = 'RESPONSECOUNT_RETRY_' . ($hash->{RETRIES} - $leftRetries);
+    $hash->{helper}{RESPONSECOUNT_SUCCESS}++;
+    $hash->{helper}{RESPONSETOTALTIMESPAN} += $requestResponse_timespan;
+    $hash->{helper}{RESPONSEAVERAGETIMESPAN} = $hash->{helper}{RESPONSETOTALTIMESPAN} / $hash->{helper}{RESPONSECOUNT_SUCCESS};
+    $hash->{helper}{$retrystring}++;
 
-    $hash->{RESPONSESUCCESSCOUNT} = $hash->{helper}{RESPONSESUCCESSCOUNT};
-    $hash->{RESPONSEAVERAGETIMESPAN} = $hash->{helper}{RESPONSETOTALTIMESPAN} / $hash->{helper}{RESPONSESUCCESSCOUNT};
-  	
+    ### just copy from helper
+    $hash->{RESPONSECOUNT_SUCCESS} = $hash->{helper}{RESPONSECOUNT_SUCCESS};
+    $hash->{RESPONSEAVERAGETIMESPAN} = $hash->{helper}{RESPONSEAVERAGETIMESPAN};
+    $hash->{$retrystring} = $hash->{helper}{$retrystring};
+
     $decoded = RainbirdController_ResponseProcessing( $param, $data );
   }
   ### error: retries left
@@ -2566,8 +2716,8 @@ sub RainbirdController_ErrorHandling($$$)
   {
     Log3 $name, 3, "RainbirdController ($name) - ErrorHandling[ID:$request_id]: no retries left Error: " . $errorMsg;
 
-    $hash->{helper}{RESPONSEERRORCOUNT}++;
-    $hash->{RESPONSEERRORCOUNT} = $hash->{helper}{RESPONSEERRORCOUNT};
+    $hash->{helper}{RESPONSECOUNT_ERROR}++;
+    $hash->{RESPONSECOUNT_ERROR} = $hash->{helper}{RESPONSECOUNT_ERROR};
 
     readingsSingleUpdate( $hash, 'state', $errorMsg, 1 );
   }
@@ -2580,6 +2730,7 @@ sub RainbirdController_ErrorHandling($$$)
     $resultCallback->($decoded, $sendData);
   }
 }
+
 
 #####################################
 # ResponseProcessing
@@ -2644,7 +2795,7 @@ sub RainbirdController_ResponseProcessing($$)
   if(not defined($decoded))
   {
     Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: decoded not defined";
-  	return undef;
+    return undef;
   }
 
   ### response
@@ -2660,15 +2811,15 @@ sub RainbirdController_ResponseProcessing($$)
   if(defined($expectedResponse_id) and
     $response_id ne $expectedResponse_id)  
   {
-  	if( $response_id eq "00" )
-  	{
+    if( $response_id eq "00" )
+    {
       Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
-  	}
-  	else
-  	{
+    }
+    else
+    {
       Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"";
-  	}
-  	
+    }
+
     return undef;
   }
 
@@ -2703,8 +2854,8 @@ sub RainbirdController_EncodeData($$@)
   ### and add them to format string arg_placeholder
   for my $index (1..$args_count)
   {
-  	### create keyname "parameterX"
-  	my $keyName = "parameter" . $index;
+    ### create keyname "parameterX"
+    my $keyName = "parameter" . $index;
     
     ### if there is an entry in hash then charLength is defined
     my $charLength = $command_set->{$keyName};
@@ -2802,7 +2953,7 @@ sub RainbirdController_DecodeData($$)
     #       "length" => 2
     #     }
     #  },
-  	
+
     $result{"type"} = $cmd_template->{"type"};
 
     while (my($key, $value) = each(%{$cmd_template})) 
@@ -3256,25 +3407,25 @@ sub RainbirdController_GetTimeFrom10Minutes($)
     </ul><br>
     <a name="RainbirdControllerattr"></a><b>Attributes</b><br>
     <ul>
+      <li><a name="RainbirdControllerautocreatezones">autocreatezones</a><br>
+        If <b>enabled</b> (default) then RainbirdZone devices will be created automatically.<br>
+        If <b>disabled</b> then  RainbirdZone devices must be create manually.<br>
+      </li>
       <li><a name="RainbirdControllerdisable">disable</a><br>
         Disables the device.<br>
-      </li>
-      <li><a name="RainbirdControllerinterval">interval</a><br>
-        Interval of polling in seconds (Default=60).<br>
-      </li>
-      <li><a name="RainbirdControllertimeout">timeout</a><br>
-        Timeout for expected response in seconds (Default=20)<br>
-      </li>
-      <li><a name="RainbirdControllerretries">retries</a><br>
-        Number of retries (Default=3)<br>
       </li>
       <li><a name="RainbirdControllerexpert">expert</a><br>
         Switches to expert mode.<br>
         If enabled then additional features for <b>debugging purposes</b> will available.<br> 
       </li>
-      <li><a name="RainbirdControllerautocreatezones">autocreatezones</a><br>
-        If <b>enabled</b> (default) then RainbirdZone devices will be created automatically.<br>
-        If <b>disabled</b> then  RainbirdZone devices must be create manually.<br>
+      <li><a name="RainbirdControllerinterval">interval</a><br>
+        Interval of polling in seconds (Default=60).<br>
+      </li>
+      <li><a name="RainbirdControllerretries">retries</a><br>
+        Number of retries (Default=3)<br>
+      </li>
+      <li><a name="RainbirdControllertimeout">timeout</a><br>
+        Timeout for expected response in seconds (Default=20)<br>
       </li>
     </ul><br>
     <a name="RainbirdControllerinternals"></a><b>Internals</b>
