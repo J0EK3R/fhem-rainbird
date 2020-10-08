@@ -57,7 +57,7 @@ sub RainbirdZone_UpdateZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.7.2';
+my $VERSION = '1.7.3';
 
 my $DefaultIrrigationTime = 10;
 

@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.7.2';
+my $VERSION = '1.7.3';
 my $DefaultInterval = 60;
 my $DefaultRetryInterval = 60;
 my $DefaultTimeout = 5;
@@ -127,6 +127,33 @@ my %KnownModels = (
   3 => "ESP-RZXe Serie",
 );
 
+
+# Some captured requests:
+# {"id":56699,"method":"getWifiParams","params":{},"jsonrpc":"2.0"}
+# {"id":3705,"method":"getNetworkStatus","params":{},"jsonrpc":"2.0"}
+# {"id":52139,"method":"tunnelSip","params":{"length":2,"data":"0300"},"jsonrpc":"2.0"}       -> AvailableStationsRequest
+# {"id":32497,"method":"tunnelSip","params":{"length":1,"data":"10"},"jsonrpc":"2.0"}         -> CurrentTimeGetRequest
+# {"id":37666,"method":"tunnelSip","params":{"length":1,"data":"12"},"jsonrpc":"2.0"}         -> CurrentDateGetRequest
+# {"id":43829,"method":"tunnelSip","params":{"length":1,"data":"36"},"jsonrpc":"2.0"}         -> RainDelayGetRequest
+# {"id":10371,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}         -> CurrentRainSensorStateRequest
+# {"id":33655,"method":"tunnelSip","params":{"length":1,"data":"48"},"jsonrpc":"2.0"}         -> CurrentIrrigationStateRequest
+# {"id":9937,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"}        -> WaterBudgetRequest
+# {"id":29038,"method":"tunnelSip","params":{"length":3,"data":"200000"},"jsonrpc":"2.0"}     -> CurrentScheduleRequest
+# {"id":19243,"method":"tunnelSip","params":{"length":3,"data":"200001"},"jsonrpc":"2.0"}     
+# {"id":10162,"method":"tunnelSip","params":{"length":3,"data":"200002"},"jsonrpc":"2.0"}
+# {"id":22838,"method":"tunnelSip","params":{"length":3,"data":"200003"},"jsonrpc":"2.0"}
+# {"id":61229,"method":"tunnelSip","params":{"length":3,"data":"200004"},"jsonrpc":"2.0"} 15
+# {"id":22305,"method":"tunnelSip","params":{"length":3,"data":"200005"},"jsonrpc":"2.0"} 16
+# {"id":39195,"method":"tunnelSip","params":{"length":3,"data":"200006"},"jsonrpc":"2.0"} 17
+# {"id":50342,"method":"tunnelSip","params":{"length":3,"data":"200007"},"jsonrpc":"2.0"} 18
+# {"id":27712,"method":"tunnelSip","params":{"length":3,"data":"200008"},"jsonrpc":"2.0"} 19
+# {"id":42833,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"} 20    -> WaterBudgetRequest
+# {"id":37789,"method":"getSettings","params":{},"jsonrpc":"2.0"}
+# {"id":45783,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}       -> CurrentStationsActiveRequest
+# {"id":19338,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"} 23    -> GetIrrigationStateRequest
+# 
+
+
 ### format of a command entry
 ### command name:                 "CurrentDateSetRequest" => 
 ###                               {
@@ -144,11 +171,13 @@ my %ControllerCommands = (
   "CommandSupportRequest" => {"command" => "04", "response" => "84", "length" => 2, 
     "parameter1" => 2}, # command like "04"
   "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
+  ### still unknown - length OK
   "Unknown06Request" => {"command" => "06", "response" => "86", "length" => 5, 
     "parameter1" => 2, 
-    "parameter2" => 1, 
-    "parameter3" => 1, 
-    "parameter4" => 1},
+    "parameter2" => 2, 
+    "parameter3" => 2, 
+    "parameter4" => 2},
+  ### still unknown - length OK
   "Unknown07Request" => {"command" => "07", "response" => "86", "length" => 5, 
     "parameter1" => 2, 
     "parameter2" => 2, 
@@ -166,13 +195,22 @@ my %ControllerCommands = (
     "parameter3" => 3},
   "CurrentScheduleRequest" => {"command" => "20","response" => "A0", "length" => 3, 
     "parameter1" => 4},  # ZoneId
+  ### still unknown - length OK
   "Unknown21Request" => {"command" => "21", "response" => "01", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 1, 
     "parameter3" => 1},
   # not supported
+    # FF ->
+    # "data" : "B0FF0064",
+    # "identifier" : "Rainbird",
+    # "programCode" : "255",
+    # "responseId" : "B0",
+    # "seasonalAdjust" : "100",
+    # "type" : "WaterBudgetResponse"
   "WaterBudgetRequest" => {"command" => "30", "response" => "B0", "length" => 2,  
-    "parameter1" => 2}, 
+    "parameter1" => 2},
+  ### still unknown
   "Unknown31Request" => {"command" => "31", "response" => "85", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 2, 
@@ -193,13 +231,16 @@ my %ControllerCommands = (
     "parameter1" => 2},
   "GetIrrigationStateRequest" => {"command" => "3B", "response" => "BB", "length" => 2,
     "parameter1" => 2},
+  ### still unknown
   "Unknown3DRequest" => {"command" => "3D", "response" => "DB", "length" => 2,
     "parameter1" => 2},
   "CurrentRainSensorStateRequest" => {"command" => "3E", "response" => "BE", "length" => 1},
   "CurrentStationsActiveRequest" => {"command" => "3F", "response" => "BF", "length" => 2, 
     "parameter1" => 2},
   "StopIrrigationRequest" => {"command" => "40", "response" => "01", "length" => 1},
-  "Unknown41Request" => {"command" => "41", "parameter1" => 2, "response" => "01", "length" => 2},
+  ### still unknown
+  "Unknown41Request" => {"command" => "41", "response" => "01", "length" => 2, 
+  	"parameter1" => 2}, # 00, FF
   # not supported
   "AdvanceStationRequest" => {"command" => "42", "response" => "01", "length" => 2,
     "parameter1" => 2}, 
@@ -217,8 +258,11 @@ my %ControllerCommands = (
     "parameter3" => 1}, 
   # not supported
   "CombinedControllerStateRequest" => {"command" => "4C", "response" => "CC","length" => 1 },
+  ### still unknown
   "Unknown50Request" => {"command" => "50", "response" => "01", "length" => 1},
+  ### still unknown
   "Unknown51Request" => {"command" => "51", "response" => "01", "length" => 1},
+  ### still unknown
   "Unknown52Request" => {"command" => "52", "response" => "01", "length" => 1},
   "FactoryResetRequest" => {"command" => "57", "response" => "01", "length" => 1},
 );
@@ -1089,6 +1133,62 @@ sub RainbirdController_Get($@)
     RainbirdController_GetCommandSupport($hash, $command);
   } 
   
+  ### DecryptHEX
+  elsif ( lc $cmd eq lc 'DecryptHEX' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+
+    readingsBeginUpdate($hash);
+    
+    ### byte[] arrOutput = { 0x2A, 0xD5, 0x4B, 0xE0, 0x84, 0x83, 0xFC, 0x71, 0x31, 0x4D, 0xB3, 0x29, 0x18, 0xF1, 0xEE, 0xDB, 0x8F, 0xE5, 0xD7, 0xFF, 0x21, 0xBA, 0x9D, 0x78, 0x08, 0x05, 0xD9, 0x99, 0x56, 0x81, 0x86, 0x5E, 0x98, 0xC3, 0x6B, 0xCD, 0x4A, 0x10, 0xF8, 0xE9, 0xDF, 0x49, 0x21, 0x73, 0x4D, 0x09, 0xF6, 0x90, 0x91, 0x06, 0x3A, 0xE8, 0xB2, 0x43, 0x9E, 0xEA, 0x31, 0x8A, 0x1D, 0x5C, 0x44, 0x98, 0xEA, 0x06, 0xD7, 0x1D, 0xBE, 0xED, 0xBC, 0x23, 0xF9, 0x35, 0x3C, 0x06, 0xD7, 0xAC, 0x5A, 0xBD, 0x47, 0xA2, 0x01, 0xFF, 0x2A, 0x90, 0xA1, 0x51, 0x22, 0x44, 0x98, 0xB8, 0x21, 0xB7, 0xC6, 0xC8, 0x67, 0x90, 0xAA, 0x41, 0xBB, 0x90, 0xE2, 0x6C, 0x9C, 0xDE, 0x1A, 0x3D, 0x90, 0x56, 0xDA, 0x94, 0x3B, 0xF3, 0x35, 0x18, 0x7A, 0x87, 0x64, 0x05, 0x7E, 0xDE, 0xE4, 0x27, 0xC4, 0x87, 0xC9, 0x4B, 0xFC, 0x6B, 0x56, 0x3A, 0x5D, 0x6B, 0x96, 0x3B, 0x84, 0xE7, 0x37, 0xBD, 0xF4, 0xB4, 0x2A, 0x62, 0x99, 0x5C };
+    ### args like 2A D5 4B E0 84 83 FC 71 31 4D B3 29 18 F1 EE DB 8F E5 D7 FF 21 BA 9D 78 08 05 D9 99 56 81 86 5E 98 C3 6B CD 4A 10 F8 E9 DF 49 21 73 4D 09 F6 90 91 06 3A E8 B2 43 9E EA 31 8A 1D 5C 44 98 EA 06 D7 1D BE ED BC 23 F9 35 3C 06 D7 AC 5A BD 47 A2 01 FF 2A 90 A1 51 22 44 98 B8 21 B7 C6 C8 67 90 AA 41 BB 90 E2 6C 9C DE 1A 3D 90 56 DA 94 3B F3 35 18 7A 87 64 05 7E DE E4 27 C4 87 C9 4B FC 6B 56 3A 5D 6B 96 3B 84 E7 37 BD F4 B4 2A 62 99 5C
+    my $string = uc(join('', @args));
+
+    #readingsBulkUpdate( $hash, 'string', $string, 1 );
+    
+    ### string between {}
+    while($string =~ m/{(.*)}/)
+    {
+      ($string) = ($string =~ /{(.*)}/);
+    }
+    
+    ### string between []
+    while($string =~ m/\[(.*)\]/)
+    {
+      ($string) = ($string =~ /\[(.*)\]/);
+    }
+
+    ### string between ()
+    while($string =~ m/\((.*)\)/)
+    {
+      ($string) = ($string =~ /\((.*)\)/);
+    }
+    
+    #readingsBulkUpdate( $hash, 'stringbetween', $string, 1 );
+
+    ### replace 0x|,
+    while ($string =~ s/(0X)|,//) {}
+    #readingsBulkUpdate( $hash, 'stringreplace', $string, 1 );
+
+    my $bytearray = pack("H*", $string);
+    #readingsBulkUpdate( $hash, 'bytearray', (sprintf("%v02X", $bytearray) =~ s/\.//rg), 1 );
+    
+    ### decrypt
+    my $decryptedData = eval { RainbirdController_DecryptData($hash, $bytearray, RainbirdController_ReadPassword($hash)) };
+  
+    if ($@)
+    {
+      readingsBulkUpdate( $hash, 'decryptedData', $@, 1 );
+    }
+    else
+    {  
+      readingsBulkUpdate( $hash, 'decryptedData', $decryptedData, 1 );
+    }
+
+    readingsEndUpdate( $hash, 1 );
+  } 
+  
   ### else
   else
   {
@@ -1109,6 +1209,7 @@ sub RainbirdController_Get($@)
       $list .= " IrrigationState:noArg" if($hash->{EXPERTMODE});
       $list .= " ZoneSchedule" if($hash->{EXPERTMODE});
       $list .= " CommandSupport" if($hash->{EXPERTMODE});
+      $list .= " DecryptHEX" if($hash->{EXPERTMODE});
     }
     
     return "Unknown argument $cmd, choose one of $list";
@@ -3035,7 +3136,7 @@ sub RainbirdController_EncryptData($$$)
   
   my $iv =  Crypt::CBC->random_bytes(16);
   #my $iv = pack("C*", map { 0x01 } 1..16);
-  Log3 $name, 5, "RainbirdController ($name) - encrypt: iv: \"" . (sprintf("%v02X", $iv) =~ s/\.//rg) . "\"";
+  Log3 $name, 5, "RainbirdController ($name) - encrypt: iv: \"" . (sprintf("%v02X", $iv) =~ s/\.//rg) . "\" length: " . length($iv);
   
   my $c = RainbirdController_AddPadding($hash, $tocodedata);
   Log3 $name, 5, "RainbirdController ($name) - encrypt: c: \"" . (sprintf("%v02X", $c) =~ s/\.//rg) . "\"";
@@ -3046,7 +3147,7 @@ sub RainbirdController_EncryptData($$$)
   #Log3 $name, 5, "RainbirdController ($name) - encrypt: b: \"$b\"";
 
   my $b2 = sha256($data);
-  Log3 $name, 5, "RainbirdController ($name) - encrypt: b2: \"" . (sprintf("%v02X", $b2) =~ s/\.//rg) . "\"";
+  Log3 $name, 5, "RainbirdController ($name) - encrypt: b2: \"" . (sprintf("%v02X", $b2) =~ s/\.//rg) . "\" length: " . length($b2);
   
   #my $cbc = Crypt::CBC->new({'key' => $b,
   #                           'cipher' => 'Cipher::AES',
@@ -3076,14 +3177,14 @@ sub RainbirdController_DecryptData($$$)
   my ( $hash, $data, $decrypt_key ) = @_;
   my $name = $hash->{NAME};
 
+  my $symmetric_key = substr(sha256($decrypt_key), 0, 32);
+  Log3 $name, 5, "RainbirdController ($name) - decrypt: symmetric_key: \"" . (sprintf("%v02X", $symmetric_key) =~ s/\.//rg) . "\"";
+
   my $iv = substr($data, 32, 16);
   Log3 $name, 5, "RainbirdController ($name) - decrypt: iv: \"" . (sprintf("%v02X", $iv) =~ s/\.//rg) . "\"";
 
-  my $encrypted_data = substr($data, 48, length($data));
+  my $encrypted_data = substr($data, 48, length($data) - 48);
   Log3 $name, 5, "RainbirdController ($name) - decrypt: encrypted_data: \"" . (sprintf("%v02X", $encrypted_data) =~ s/\.//rg) . "\"";
-
-  my $symmetric_key = substr(sha256($decrypt_key), 0, 32);
-  Log3 $name, 5, "RainbirdController ($name) - decrypt: symmetric_key: \"" . (sprintf("%v02X", $symmetric_key) =~ s/\.//rg) . "\"";
 
   #my $cbc = Crypt::CBC->new({'key' => $symmetric_key,
   #                           'cipher' => 'Cipher::AES',
@@ -3365,44 +3466,60 @@ sub RainbirdController_GetTimeFrom10Minutes($)
     <br>
     <a name="RainbirdControllerget"></a><b>Get</b><br>
     <ul>
-      <li><B>DeviceState</B><a name="RainbirdControllerDeviceState"></a><br>
-        Get current device state.
-      </li>
-      <li><B>DeviceInfo</B><a name="RainbirdControllerDeviceInfo"></a><br>
-        Get current device info.
-      </li>
-      <li><B>ModelAndVersion</B><a name="RainbirdControllerModelAndVersion"></a><br>
-        Get device model and version.
-      </li>
       <li><B>AvailableZones</B><a name="RainbirdControllerAvailableZones"></a><br>
         Gets all available zones.
       </li>
-      <li><B>SerialNumber</B><a name="RainbirdControllerSerialNumber"></a><br>
-        Get device serial number.
-      </li>
-      <li><B>Date</B><a name="RainbirdControllerDate"></a><br>
-        Get internal device date.
-      </li>
-      <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
-        Get internal device time.
-      </li>
-      <li><B>RainSensorState</B><a name="RainbirdControllerRainSensorState"></a><br>
-        Get the state of the rainsensor.
-      </li>
-      <li><B>RainDelay</B><a name="RainbirdControllerRainDelay"></a><br>
-        Get the delay in days.
+      <li><B>CommandSupport</B><a name="RainbirdControllerCommandSupport"></a><br>
+        Get supported command info.
       </li>
       <li><B>CurrentIrrigation</B><a name="RainbirdControllerCurrentIrrigation"></a><br>
         Get the current irrigation state.
       </li>
+      <li><B>Date</B><a name="RainbirdControllerDate"></a><br>
+        Get internal device date.
+      </li>
+      <li><B>DecryptHEX</B><a name="RainbirdControllerDecryptHEX"></a><br>
+        Toolfunction to decrypt a captured message with the set password.<br>
+        You can put a string of hex values as parameter to this function and get the decrypted string.<br>
+        <br>
+        The function takes the substring between any kind of braces and strips al "0x", SPACE and "," from the string.<br>
+        So the format of the hex values can be:<br>
+        <ul>
+          <li>
+            <code>AA BB CC</code>
+          </li>
+          <li>
+            Fiddler4: Copy as 0x##<br>
+            <code>byte[] arrOutput = { 0x2A, 0xD5, 0x4B, ..., 0x99, 0x5C };</code>
+          </li>
+        </ul>
+      </li>
+      <li><B>DeviceInfo</B><a name="RainbirdControllerDeviceInfo"></a><br>
+        Get current device info.
+      </li>
+      <li><B>DeviceState</B><a name="RainbirdControllerDeviceState"></a><br>
+        Get current device state.
+      </li>
       <li><B>IrrigationState</B><a name="RainbirdControllerIrrigationState"></a><br>
         Get the current irrigation state.
       </li>
+      <li><B>ModelAndVersion</B><a name="RainbirdControllerModelAndVersion"></a><br>
+        Get device model and version.
+      </li>
+      <li><B>RainDelay</B><a name="RainbirdControllerRainDelay"></a><br>
+        Get the delay in days.
+      </li>
+      <li><B>RainSensorState</B><a name="RainbirdControllerRainSensorState"></a><br>
+        Get the state of the rainsensor.
+      </li>
+      <li><B>SerialNumber</B><a name="RainbirdControllerSerialNumber"></a><br>
+        Get device serial number.
+      </li>
+      <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
+        Get internal device time.
+      </li>
       <li><B>ZoneSchedule</B><a name="RainbirdControllerZoneSchedule"></a><br>
         Get schedule of a zone.
-      </li>
-      <li><B>CommandSupport</B><a name="RainbirdControllerCommandSupport"></a><br>
-        Get supported command info.
       </li>
     </ul><br>
     <a name="RainbirdControllerattr"></a><b>Attributes</b><br>
