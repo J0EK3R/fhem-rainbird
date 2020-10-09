@@ -41,13 +41,17 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.7.3';
-my $DefaultInterval = 60;
-my $DefaultRetryInterval = 60;
-my $DefaultTimeout = 5;
-my $DefaultRetries = 3;
+my $VERSION = '1.7.4';
+my $DefaultInterval = 60;       # default value for the polling interval in seconds
+my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
+my $DefaultTimeout = 5;         # default value for response timeout in seconds
+my $DefaultRetries = 3;         # default number of retrie 
 
-### Forward declarations
+#####################################
+# Forward declarations
+#####################################
+
+### fhem
 sub RainbirdController_Initialize($);
 sub RainbirdController_Define($$);
 sub RainbirdController_Undef($$);
@@ -59,18 +63,29 @@ sub RainbirdController_Write($@);
 sub RainbirdController_Set($@);
 sub RainbirdController_Get($@);
 
+### timer for polling
 sub RainbirdController_TimerStop($);
 sub RainbirdController_TimerRestart($);
 sub RainbirdController_TimerLoop($);
 
-sub RainbirdController_GetDeviceState($;$);
-
+### static device infos
 sub RainbirdController_GetModelAndVersion($;$);
 sub RainbirdController_GetAvailableZones($;$);
 sub RainbirdController_GetCommandSupport($$;$);
+sub RainbirdController_GetSerialNumber($;$);
+
+### dynamic device infos
 sub RainbirdController_SetWaterBudget($$;$);
 sub RainbirdController_GetRainSensorState($;$);
-sub RainbirdController_GetSerialNumber($;$);
+sub RainbirdController_GetDeviceState($;$);
+
+### device commands
+sub RainbirdController_StopIrrigation($;$);
+sub RainbirdController_FactoryReset($;$);
+
+### not supported by ESP-RZXe Serie
+sub RainbirdController_SetProgram($$;$);
+
 ### Time
 sub RainbirdController_GetCurrentTime($;$);
 sub RainbirdController_SetCurrentTime($$$$;$);
@@ -84,18 +99,33 @@ sub RainbirdController_SetRainDelay($$;$);
 sub RainbirdController_GetCurrentIrrigation($;$);
 sub RainbirdController_GetActiveStation($;$);
 sub RainbirdController_GetIrrigationState($;$);
-## Zone
+### Zone
 sub RainbirdController_ZoneIrrigate($$$;$);
-sub RainbirdController_ZoneGetSchedule($$;$);
 sub RainbirdController_ZoneTest($$;$);
-
-sub RainbirdController_SetProgram($$;$);
-sub RainbirdController_StopIrrigation($;$);
-sub RainbirdController_FactoryReset($;$);
+### Zone - Schedule
+sub RainbirdController_ZoneGetSchedule($$;$);
 
 ### for testing purposes only
 sub RainbirdController_TestCMD($$$;$);
 sub RainbirdController_TestRAW($$;$);
+
+### communication
+sub RainbirdController_Command($$$@);
+sub RainbirdController_Request($$$$);
+sub RainbirdController_ErrorHandling($$$);
+sub RainbirdController_ResponseProcessing($$);
+
+### protocol handling
+sub RainbirdController_EncodeData($$@);
+sub RainbirdController_DecodeData($$);
+sub RainbirdController_AddPadding($$);
+sub RainbirdController_EncryptData($$$);
+sub RainbirdController_DecryptData($$$);
+
+### password
+sub RainbirdController_StorePassword($$);
+sub RainbirdController_ReadPassword($);
+sub RainbirdController_DeletePassword($);
 
 ### internal tool functions
 sub RainbirdController_CallIfLambda($$$$);
@@ -104,19 +134,6 @@ sub RainbirdController_GetZoneFromRaw($);
 sub RainbirdController_GetAvailableZoneCountFromRaw($);
 sub RainbirdController_GetAvailableZoneMaskFromRaw($);
 
-sub RainbirdController_Command($$$@);
-sub RainbirdController_Request($$$$);
-sub RainbirdController_ErrorHandling($$$);
-sub RainbirdController_ResponseProcessing($$);
-
-sub RainbirdController_EncodeData($$@);
-sub RainbirdController_DecodeData($$);
-sub RainbirdController_AddPadding($$);
-sub RainbirdController_EncryptData($$$);
-sub RainbirdController_DecryptData($$$);
-sub RainbirdController_StorePassword($$);
-sub RainbirdController_ReadPassword($);
-sub RainbirdController_DeletePassword($);
 sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 sub RainbirdController_GetWeekdaysFromBitmask($);
@@ -2653,6 +2670,12 @@ sub RainbirdController_Request($$$$)
     my ( $leftRetries, $retryCallback ) = @_;
     
     my $request_id = ++$hash->{REQUESTID};
+    
+    ### limit request id
+    if($request_id >= 65536)
+    {
+      $request_id = 0;
+    }
   
     my $send_data = 
     '{
