@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.7.4';
+my $VERSION = '1.8.0';
 my $DefaultInterval = 60;       # default value for the polling interval in seconds
 my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
 my $DefaultTimeout = 5;         # default value for response timeout in seconds
@@ -78,6 +78,8 @@ sub RainbirdController_GetSerialNumber($;$);
 sub RainbirdController_SetWaterBudget($$;$);
 sub RainbirdController_GetRainSensorState($;$);
 sub RainbirdController_GetDeviceState($;$);
+sub RainbirdController_GetWifiParams($;$);
+sub RainbirdController_GetNetworkStatus($;$);
 
 ### device commands
 sub RainbirdController_StopIrrigation($;$);
@@ -111,7 +113,7 @@ sub RainbirdController_TestRAW($$;$);
 
 ### communication
 sub RainbirdController_Command($$$@);
-sub RainbirdController_Request($$$$);
+sub RainbirdController_Request($$$$$);
 sub RainbirdController_ErrorHandling($$$);
 sub RainbirdController_ResponseProcessing($$);
 
@@ -182,38 +184,41 @@ my %KnownModels = (
 ### total bytelength:               "length" => 4
 ###                               },
 my %ControllerCommands = (
-  "ModelAndVersionRequest" => {"command" => "02", "response" => "82", "length" => 1},
-  "AvailableStationsRequest" => {"command" => "03", "response" => "83", "length" => 2, 
+  "GetWifiParamsRequest" => {"method" => "getWifiParams", "response" => "WifiParams"},
+  "GetNetworkStatusRequest" => {"method" => "getNetworkStatus", "response" => "NetworkStatus"},
+  "GetSettingsRequest" => {"method" => "getSettings", "response" => "Settings"},
+  "ModelAndVersionRequest" => {"method" => "tunnelSip", "command" => "02", "response" => "82", "length" => 1},
+  "AvailableStationsRequest" => {"method" => "tunnelSip", "command" => "03", "response" => "83", "length" => 2, 
     "parameter1" => 2},
-  "CommandSupportRequest" => {"command" => "04", "response" => "84", "length" => 2, 
+  "CommandSupportRequest" => {"method" => "tunnelSip", "command" => "04", "response" => "84", "length" => 2, 
     "parameter1" => 2}, # command like "04"
-  "SerialNumberRequest" => {"command" => "05", "response" => "85", "length" => 1},
+  "SerialNumberRequest" => {"method" => "tunnelSip", "command" => "05", "response" => "85", "length" => 1},
   ### still unknown - length OK
-  "Unknown06Request" => {"command" => "06", "response" => "86", "length" => 5, 
+  "Unknown06Request" => {"method" => "tunnelSip", "command" => "06", "response" => "86", "length" => 5, 
     "parameter1" => 2, 
     "parameter2" => 2, 
     "parameter3" => 2, 
     "parameter4" => 2},
   ### still unknown - length OK
-  "Unknown07Request" => {"command" => "07", "response" => "86", "length" => 5, 
+  "Unknown07Request" => {"method" => "tunnelSip", "command" => "07", "response" => "86", "length" => 5, 
     "parameter1" => 2, 
     "parameter2" => 2, 
     "parameter3" => 2, 
     "parameter4" => 2},
-  "CurrentTimeGetRequest" => {"command" => "10", "response" => "90", "length" => 1},
-  "CurrentTimeSetRequest" => {"command" => "11", "response" => "01", "length" => 4, 
+  "CurrentTimeGetRequest" => {"method" => "tunnelSip", "command" => "10", "response" => "90", "length" => 1},
+  "CurrentTimeSetRequest" => {"method" => "tunnelSip", "command" => "11", "response" => "01", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 2, 
     "parameter3" => 2},
-  "CurrentDateGetRequest" => {"command" => "12", "response" => "92", "length" => 1},
-  "CurrentDateSetRequest" => {"command" => "13", "response" => "01", "length" => 4, 
+  "CurrentDateGetRequest" => {"method" => "tunnelSip", "command" => "12", "response" => "92", "length" => 1},
+  "CurrentDateSetRequest" => {"method" => "tunnelSip", "command" => "13", "response" => "01", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 1, 
     "parameter3" => 3},
-  "CurrentScheduleRequest" => {"command" => "20","response" => "A0", "length" => 3, 
+  "CurrentScheduleRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
     "parameter1" => 4},  # ZoneId
   ### still unknown - length OK
-  "Unknown21Request" => {"command" => "21", "response" => "01", "length" => 4, 
+  "Unknown21Request" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 1, 
     "parameter3" => 1},
@@ -225,63 +230,63 @@ my %ControllerCommands = (
     # "responseId" : "B0",
     # "seasonalAdjust" : "100",
     # "type" : "WaterBudgetResponse"
-  "WaterBudgetRequest" => {"command" => "30", "response" => "B0", "length" => 2,  
+  "WaterBudgetRequest" => {"method" => "tunnelSip", "command" => "30", "response" => "B0", "length" => 2,  
     "parameter1" => 2},
   ### still unknown
-  "Unknown31Request" => {"command" => "31", "response" => "85", "length" => 4, 
+  "Unknown31Request" => {"method" => "tunnelSip", "command" => "31", "response" => "85", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 2, 
     "parameter3" => 2},
   # not supported
-  "ZonesSeasonalAdjustFactorRequest" => {"command" => "32", "response" => "B2", "length" => 2,  
+  "ZonesSeasonalAdjustFactorRequest" => {"method" => "tunnelSip", "command" => "32", "response" => "B2", "length" => 2,  
     "parameter1" => 2}, 
-  "RainDelayGetRequest" => {"command" => "36", "response" => "B6", "length" => 1},
-  "RainDelaySetRequest" => {"command" => "37", "response" => "01", "length" => 3, 
+  "RainDelayGetRequest" => {"method" => "tunnelSip", "command" => "36", "response" => "B6", "length" => 1},
+  "RainDelaySetRequest" => {"method" => "tunnelSip", "command" => "37", "response" => "01", "length" => 3, 
     "parameter1" => 4},
   # not supported
-  "ManuallyRunProgramRequest" => {"command" => "38", "response" => "01", "length" => 2,
+  "ManuallyRunProgramRequest" => {"method" => "tunnelSip", "command" => "38", "response" => "01", "length" => 2,
     "parameter1" => 2}, 
-  "ManuallyRunStationRequest" => {"command" => "39", "response" => "01", "length" => 4, 
+  "ManuallyRunStationRequest" => {"method" => "tunnelSip", "command" => "39", "response" => "01", "length" => 4, 
     "parameter1" => 4,  # ZoneId
     "parameter2" => 2}, # irrigation timespan in minutes
-  "TestStationsRequest" => {"command" => "3A", "response" => "01", "length" => 2, 
+  "TestStationsRequest" => {"method" => "tunnelSip", "command" => "3A", "response" => "01", "length" => 2, 
     "parameter1" => 2},
-  "GetIrrigationStateRequest" => {"command" => "3B", "response" => "BB", "length" => 2,
+  "GetIrrigationStateRequest" => {"method" => "tunnelSip", "command" => "3B", "response" => "BB", "length" => 2,
     "parameter1" => 2},
   ### still unknown
-  "Unknown3DRequest" => {"command" => "3D", "response" => "DB", "length" => 2,
+  "Unknown3DRequest" => {"method" => "tunnelSip", "command" => "3D", "response" => "DB", "length" => 2,
     "parameter1" => 2},
-  "CurrentRainSensorStateRequest" => {"command" => "3E", "response" => "BE", "length" => 1},
-  "CurrentStationsActiveRequest" => {"command" => "3F", "response" => "BF", "length" => 2, 
+  "CurrentRainSensorStateRequest" => {"method" => "tunnelSip", "command" => "3E", "response" => "BE", "length" => 1},
+  "CurrentStationsActiveRequest" => {"method" => "tunnelSip", "command" => "3F", "response" => "BF", "length" => 2, 
     "parameter1" => 2},
-  "StopIrrigationRequest" => {"command" => "40", "response" => "01", "length" => 1},
+  "StopIrrigationRequest" => {"method" => "tunnelSip", "command" => "40", "response" => "01", "length" => 1},
   ### still unknown
-  "Unknown41Request" => {"command" => "41", "response" => "01", "length" => 2, 
+  "Unknown41Request" => {"method" => "tunnelSip", "command" => "41", "response" => "01", "length" => 2, 
   	"parameter1" => 2}, # 00, FF
   # not supported
-  "AdvanceStationRequest" => {"command" => "42", "response" => "01", "length" => 2,
+  "AdvanceStationRequest" => {"method" => "tunnelSip", "command" => "42", "response" => "01", "length" => 2,
     "parameter1" => 2}, 
-  "CurrentIrrigationStateRequest" => {"command" => "48", "response" => "C8", "length" => 1},
+  "CurrentIrrigationStateRequest" => {"method" => "tunnelSip", "command" => "48", "response" => "C8", "length" => 1},
   # not supported
-  "CurrentControllerStateSet" => {"command" => "49", "response" => "01", "length" => 2, 
-    "parameter1" => 2}, 
-  # not supported
-  "ControllerEventTimestampRequest" => {"command" => "4A", "response" => "CA", "length" => 2, 
+  "CurrentControllerStateSet" => {"method" => "tunnelSip", "command" => "49", "response" => "01", "length" => 2, 
     "parameter1" => 2}, 
   # not supported
-  "StackManuallyRunStationRequest" => {"command" => "4B", "response" => "01", "length" => 4, 
+  "ControllerEventTimestampRequest" => {"method" => "tunnelSip", "command" => "4A", "response" => "CA", "length" => 2, 
+    "parameter1" => 2}, 
+  # not supported
+  "StackManuallyRunStationRequest" => {"method" => "tunnelSip", "command" => "4B", "response" => "01", "length" => 4, 
     "parameter1" => 2, 
     "parameter2" => 1, 
     "parameter3" => 1}, 
   # not supported
-  "CombinedControllerStateRequest" => {"command" => "4C", "response" => "CC","length" => 1 },
+  "CombinedControllerStateRequest" => {"method" => "tunnelSip", "command" => "4C", "response" => "CC","length" => 1 },
   ### still unknown
-  "Unknown50Request" => {"command" => "50", "response" => "01", "length" => 1},
+  "Unknown50Request" => {"method" => "tunnelSip", "command" => "50", "response" => "01", "length" => 1},
   ### still unknown
-  "Unknown51Request" => {"command" => "51", "response" => "01", "length" => 1},
+  "Unknown51Request" => {"method" => "tunnelSip", "command" => "51", "response" => "01", "length" => 1},
   ### still unknown
-  "Unknown52Request" => {"command" => "52", "response" => "01", "length" => 1},
-  "FactoryResetRequest" => {"command" => "57", "response" => "01", "length" => 1},
+  "Unknown52Request" => {"method" => "tunnelSip", "command" => "52", "response" => "01", "length" => 1},
+  "FactoryResetRequest" => {"method" => "tunnelSip", "command" => "57", "response" => "01", "length" => 1},
 );
 
 ### format of a response entry
@@ -308,7 +313,65 @@ my %ControllerCommands = (
 ###                              } 
 ###                            },
 
+
+# {
+#   "jsonrpc": "2.0", 
+#   "result":
+#   {
+#     "length":14,
+#     "data":"A0000800909090909090007F0200"
+#   },
+#   "id": 28
+# }
 my %ControllerResponses = (
+  # {
+  #   "jsonrpc": "2.0", 
+  #   "result":
+  #   {
+  #     "macAddress":"AA:BB:CC:DD:EE:FF", 
+  #     "localIpAddress":"192.168.0.77", 
+  #     "localNetmask":"255.255.255.0", 
+  #     "localGateway":"192.168.0.1", 
+  #     "rssi":-57, "wifiSsid":"MYWLAN", 
+  #     "wifiPassword":"password", 
+  #     "wifiSecurity":"wpa2-aes", 
+  #     "apTimeoutNoLan":20, 
+  #     "apTimeoutIdle":20, 
+  #     "apSecurity":"unknown", 
+  #     "stickVersion":"Rain Bird Stick Rev C/1.63"
+  #   }, 
+  #   "id": 29
+  # }
+  "WifiParams" => {"type" => "GetWifiParamsResponse"},
+  
+  # {
+  #   "jsonrpc": "2.0",
+  #   "result":
+  #   {
+  #     "networkUp":true, 
+  #     "internetUp":true
+  #   }, 
+  #   "id": 30
+  # }     
+  "NetworkStatus" => {"type" => "GetNetworkStatusResponse"},
+
+  # {
+  #   "jsonrpc": "2.0", 
+  #   "result":
+  #   {
+  #     "country":"DE", 
+  #     "code":"12345", 
+  #     "globalDisable":false, 
+  #     "numPrograms":0, 
+  #     "programOptOutMask":"00", 
+  #     "SoilTypes": [] , 
+  #     "FlowRates": [] , 
+  #     "FlowUnits": [] 
+  #    }, 
+  #   "id": 44
+  # }
+  "Settings" => {"type" => "GetSettingsResponse"},
+
   "00" => {"length" =>  3, "type" => "NotAcknowledgeResponse", 
     "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
     "NAKCode" => {"position" => 4, "length" => 2, "knownvalues" => {"1" => "[1]: command not supported", "2" => "[2]: wrong number of parameters", "4" => "[4]: illegal parameter",} } },
@@ -1033,14 +1096,31 @@ sub RainbirdController_Get($@)
     RainbirdController_GetDeviceState($hash);
   } 
   
-  ### DeviceInfo
-  elsif ( lc $cmd eq lc 'DeviceInfo' )
+  ### WifiParams
+  elsif ( lc $cmd eq lc 'WifiParams' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    #RainbirdController_GetDeviceInfo($hash);
-    RainbirdController_GetDeviceState($hash);
+    RainbirdController_GetWifiParams($hash);
+  } 
+  
+  ### NetworStatus
+  elsif ( lc $cmd eq lc 'NetworStatus' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+    
+    RainbirdController_GetNetworkStatus($hash);
+  } 
+  
+  ### Settings
+  elsif ( lc $cmd eq lc 'Settings' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+    
+    RainbirdController_GetSettings($hash);
   } 
   
   ### ModelAndVersion
@@ -1213,20 +1293,22 @@ sub RainbirdController_Get($@)
     
     if ( defined( RainbirdController_ReadPassword($hash) ) )
     {
-      $list .= " DeviceState:noArg" if($hash->{EXPERTMODE});
-      $list .= " DeviceInfo:noArg" if($hash->{EXPERTMODE});
-      $list .= " ModelAndVersion:noArg" if($hash->{EXPERTMODE});
       $list .= " AvailableZones:noArg" if($hash->{EXPERTMODE});
-      $list .= " SerialNumber:noArg" if($hash->{EXPERTMODE});
-      $list .= " Date:noArg" if($hash->{EXPERTMODE});
-      $list .= " Time:noArg" if($hash->{EXPERTMODE});
-      $list .= " RainSensorState:noArg" if($hash->{EXPERTMODE});
-      $list .= " RainDelay:noArg" if($hash->{EXPERTMODE});
-      $list .= " CurrentIrrigation:noArg" if($hash->{EXPERTMODE});
-      $list .= " IrrigationState:noArg" if($hash->{EXPERTMODE});
-      $list .= " ZoneSchedule" if($hash->{EXPERTMODE});
       $list .= " CommandSupport" if($hash->{EXPERTMODE});
+      $list .= " CurrentIrrigation:noArg" if($hash->{EXPERTMODE});
       $list .= " DecryptHEX" if($hash->{EXPERTMODE});
+      $list .= " Date:noArg" if($hash->{EXPERTMODE});
+      $list .= " DeviceState:noArg" if($hash->{EXPERTMODE});
+      $list .= " IrrigationState:noArg" if($hash->{EXPERTMODE});
+      $list .= " ModelAndVersion:noArg" if($hash->{EXPERTMODE});
+      $list .= " NetworStatus:noArg" if($hash->{EXPERTMODE});
+      $list .= " RainDelay:noArg" if($hash->{EXPERTMODE});
+      $list .= " RainSensorState:noArg" if($hash->{EXPERTMODE});
+      $list .= " SerialNumber:noArg" if($hash->{EXPERTMODE});
+      $list .= " Settings:noArg" if($hash->{EXPERTMODE});
+      $list .= " Time:noArg" if($hash->{EXPERTMODE});
+      $list .= " WifiParams:noArg" if($hash->{EXPERTMODE});
+      $list .= " ZoneSchedule" if($hash->{EXPERTMODE});
     }
     
     return "Unknown argument $cmd, choose one of $list";
@@ -1369,7 +1451,10 @@ sub RainbirdController_GetDeviceState($;$)
   my $getActiveStation = RainbirdController_CallIfLambda($hash, sub { return !$CMDSUPPORT_3F_Check->() }, \&RainbirdController_GetActiveStation, $getScheduleCallback);
   my $getIrrigationState = RainbirdController_CallIfLambda($hash, sub { return $CMDSUPPORT_3F_Check->() }, \&RainbirdController_GetIrrigationState, $getActiveStation);
   
-  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getIrrigationState); };
+  my $getSettings = sub { RainbirdController_GetSettings($hash, $getIrrigationState); };
+  my $getNetworkStatus = sub { RainbirdController_GetNetworkStatus($hash, $getSettings); };
+  my $getWifiParams = sub { RainbirdController_GetWifiParams($hash, $getNetworkStatus); };
+  my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getWifiParams); };
   my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
   my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
   my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
@@ -2424,8 +2509,230 @@ sub RainbirdController_FactoryReset($;$)
       readingsEndUpdate( $hash, 1 );
     }
 
-    # update reading activeStations
-    RainbirdController_GetActiveStation($hash, $callback);
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - FactoryReset callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command );
+}
+
+#####################################
+# RainbirdController_GetWifiParams
+#####################################
+sub RainbirdController_GetWifiParams($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+  
+  my $command = "GetWifiParams";
+    
+  Log3 $name, 4, "RainbirdController ($name) - GetWifiParams";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    #     "macAddress":"AA:BB:CC:DD:EE:FF", 
+    #     "localIpAddress":"192.168.0.77", 
+    #     "localNetmask":"255.255.255.0", 
+    #     "localGateway":"192.168.0.1", 
+    #     "rssi":-57, "wifiSsid":"MYWLAN", 
+    #     "wifiPassword":"password", 
+    #     "wifiSecurity":"wpa2-aes", 
+    #     "apTimeoutNoLan":20, 
+    #     "apTimeoutIdle":20, 
+    #     "apSecurity":"unknown", 
+    #     "stickVersion":"Rain Bird Stick Rev C/1.63"
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetWifiParams lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"macAddress"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_MacAddress', $result->{"macAddress"}, 1 );
+      }
+      if( defined($result->{"localIpAddress"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_IpAddress', $result->{"localIpAddress"}, 1 );
+      }
+      if( defined($result->{"localNetmask"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_Netmask', $result->{"localNetmask"}, 1 );
+      }
+      if( defined($result->{"localGateway"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_Gateway', $result->{"localGateway"}, 1 );
+      }
+      if( defined($result->{"rssi"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_rssi', $result->{"rssi"}, 1 );
+      }
+      if( defined($result->{"wifiSecurity"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_Security', $result->{"wifiSecurity"}, 1 );
+      }
+      if( defined($result->{"apTimeoutNoLan"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_ApTimeoutNoLan', $result->{"apTimeoutNoLan"}, 1 );
+      }
+      if( defined($result->{"apTimeoutIdle"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_ApTimeoutIdle', $result->{"apTimeoutIdle"}, 1 );
+      }
+      if( defined($result->{"stickVersion"}) )
+      {
+        readingsBulkUpdate( $hash, 'Wifi_StickVersion', $result->{"stickVersion"}, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetWifiParams callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command );
+}
+
+#####################################
+# RainbirdController_GetNetworkStatus
+#####################################
+sub RainbirdController_GetNetworkStatus($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+  
+  my $command = "GetNetworkStatus";
+    
+  Log3 $name, 4, "RainbirdController ($name) - GetNetworkStatus";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    # {
+    #   "jsonrpc": "2.0",
+    #   "result":
+    #   {
+    #     "networkUp":true, 
+    #     "internetUp":true
+    #   }, 
+    #   "id": 30
+    # }     
+
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetNetworkStatus lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"networkUp"}) )
+      {
+        readingsBulkUpdate( $hash, 'NetworkUp', $result->{"networkUp"}, 1 );
+      }
+      if( defined($result->{"internetUp"}) )
+      {
+        readingsBulkUpdate( $hash, 'InternetUp', $result->{"internetUp"}, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetNetworkStatus callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command );
+}
+
+#####################################
+# RainbirdController_GetSettings
+#####################################
+sub RainbirdController_GetSettings($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+  
+  my $command = "GetSettings";
+    
+  Log3 $name, 4, "RainbirdController ($name) - GetSettings";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    # {
+    #   "jsonrpc": "2.0",
+    #   "result":
+    #   {
+    #     "country":"DE", 
+    #     "code":"12345", 
+    #     "globalDisable":false, 
+    #     "numPrograms":0, 
+    #     "programOptOutMask":"00", 
+    #     "SoilTypes": [] , 
+    #     "FlowRates": [] , 
+    #     "FlowUnits": [] 
+    #   }, 
+    #   "id": 30
+    # }     
+
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetSettings lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"country"}) )
+      {
+        readingsBulkUpdate( $hash, 'SettingCountry', $result->{"country"}, 1 );
+      }
+      if( defined($result->{"code"}) )
+      {
+        readingsBulkUpdate( $hash, 'SettingCode', $result->{"code"}, 1 );
+      }
+      if( defined($result->{"globalDisable"}) )
+      {
+        readingsBulkUpdate( $hash, 'SettingGlobalDisable', $result->{"globalDisable"}, 1 );
+      }
+      if( defined($result->{"numPrograms"}) )
+      {
+        readingsBulkUpdate( $hash, 'SettingNumPrograms', $result->{"numPrograms"}, 1 );
+      }
+      if( defined($result->{"programOptOutMask"}) )
+      {
+        readingsBulkUpdate( $hash, 'SettingProgramOptOutMask', $result->{"programOptOutMask"}, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetSettings callback";
+      $callback->();
+    }
   }; 
     
   # send command
@@ -2497,7 +2804,8 @@ sub RainbirdController_TestRAW($$;$)
   }; 
     
   # send command
-  RainbirdController_Request($hash, $resultCallback, undef, $rawHexString );
+  my $params = '"data":"' . $rawHexString . '", "length":"' . (length($rawHexString) / 2) . '"';
+  RainbirdController_Request($hash, $resultCallback, undef, "tunnelSip", $params );
 }
 
 #####################################
@@ -2607,39 +2915,79 @@ sub RainbirdController_Command($$$@)
 
   if( defined( $command_set ) )
   {
-    my $commandString = $command_set->{"command"};
-    my $cmdKey = $CMDSUPPORTPREFIX . $commandString;
-  
-    ### check if support of command was checked before
-    if(not defined($hash->{$cmdKey}))
-    {
-      ### callback - this function have to be recalled
-      my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
+    my $method = $command_set->{"method"};
 
-      ### check support of the command und recall this function 
-      RainbirdController_GetCommandSupport($hash, "0x" . $commandString, $commandCallback);
-      return; # callback is handled
-    }
-    ### command is supported
-    elsif($hash->{$cmdKey} == 1)
+    ### method "tunnelSip"
+    if($method eq "tunnelSip")
     {
-      # encode data
-      my $data = RainbirdController_EncodeData($hash, $command_set, @args);  
+      my $commandString = $command_set->{"command"};
+      my $cmdKey = $CMDSUPPORTPREFIX . $commandString;
 
-      if(defined($data))
+      ### check if support of command was checked before
+      if(not defined($hash->{$cmdKey}))
       {
-        ### send request to device 
-        RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $data );
+        ### callback - this function have to be recalled
+        my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
+
+        ### check support of the command und recall this function 
+        RainbirdController_GetCommandSupport($hash, "0x" . $commandString, $commandCallback);
         return; # callback is handled
       }
-      else
+      ### command is supported
+      elsif($hash->{$cmdKey} == 1)
       {
-        Log3 $name, 2, "RainbirdController ($name) - Command: data not defined";
-      }  
-    }
-    ### command is not supported
+        # encode data
+        my $data = RainbirdController_EncodeData($hash, $command_set, @args);  
+
+        if(defined($data))
+        {
+          my $params = '"data":"' . $data . '", "length":"' . (length($data) / 2) . '"';
+        
+          ### send request to device 
+          RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+          return; # callback is handled
+        }
+        else
+        {
+          Log3 $name, 2, "RainbirdController ($name) - Command: data not defined";
+        }
+      }
+      ### command is not supported
+      {
+        Log3 $name, 2, "RainbirdController ($name) - Command: $commandString is not supported";
+      }
+    }  
+    ### method "getWifiParams"
+    elsif($method eq "getWifiParams")
     {
-      Log3 $name, 2, "RainbirdController ($name) - Command: $commandString is not supported";
+       my $params = '';
+
+       ### send request to device 
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       return; # callback is handled
+    }
+    ### method "getNetworkStatus"
+    elsif($method eq "getNetworkStatus")
+    {
+       my $params = '';
+
+       ### send request to device 
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       return; # callback is handled
+    }
+    ### method "getSettings"
+    elsif($method eq "getSettings")
+    {
+       my $params = '';
+
+       ### send request to device 
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       return; # callback is handled
+    }
+    ### method is not supported
+    else
+    {
+      Log3 $name, 2, "RainbirdController ($name) - method: $method is not supported";
     }
   }
   else
@@ -2659,9 +3007,9 @@ sub RainbirdController_Command($$$@)
 #####################################
 # Request
 #####################################
-sub RainbirdController_Request($$$$)
+sub RainbirdController_Request($$$$$)
 {
-  my ( $hash, $resultCallback, $expectedResponse_id, $data ) = @_;
+  my ( $hash, $resultCallback, $expectedResponse_id, $dataMethod, $parameters ) = @_;
   my $name = $hash->{NAME};
 
   my $sendReceive = undef; 
@@ -2677,17 +3025,19 @@ sub RainbirdController_Request($$$$)
       $request_id = 0;
     }
   
-    my $send_data = 
-    '{
-      "id":' . $request_id . ',
-      "jsonrpc":"2.0",
-      "method":"tunnelSip",
-      "params":
-      {
-        "data":"' . $data . '",
-        "length":"' . (length($data) / 2) . '"
-      }
-    }';
+#    my $send_data = 
+#    '{
+#      "id":' . $request_id . ',
+#      "jsonrpc":"2.0",
+#      "method":"tunnelSip",
+#      "params":
+#      {
+#        "data":"' . $data . '",
+#        "length":"' . (length($data) / 2) . '"
+#      }
+#    }';
+    
+    my $send_data = '{"id":' . $request_id . ',"jsonrpc":"2.0","method":"' . $dataMethod . '","params": {' . $parameters . '}}';
   
     Log3 $name, 5, "RainbirdController ($name) - Request[ID:$request_id] send_data: $send_data";
 
@@ -2698,19 +3048,19 @@ sub RainbirdController_Request($$$$)
     {  
       ### post data 
       my $uri = 'http://' . $hash->{HOST} . '/stick';
-      my $method = 'POST';
+      my $httpMethod = 'POST';
       my $payload = $encrypt_data;
       my $header = $HEAD;
       my $request_timestamp = gettimeofday();
 
-      Log3 $name, 5, "RainbirdController ($name) - Request[ID:$request_id] Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $method";
+      Log3 $name, 5, "RainbirdController ($name) - Request[ID:$request_id] Send with URL: $uri, HEADER: $header, DATA: $payload, METHOD: $httpMethod";
   
       HttpUtils_NonblockingGet(
       {
         hash      => $hash,
     
         url       => $uri,
-        method    => $method,
+        method    => $httpMethod,
         header    => $header, # for debugging: . "\nRequestId: " . $request_id,
         data      => $payload,
         timeout   => $hash->{TIMEOUT},
@@ -2721,6 +3071,7 @@ sub RainbirdController_Request($$$$)
         request_timestamp => $request_timestamp,
       
         expectedResponse_id => $expectedResponse_id,
+        dataMethod => $dataMethod,
         sendData => $send_data,
       
         leftRetries => $leftRetries,
@@ -2868,6 +3219,7 @@ sub RainbirdController_ResponseProcessing($$)
   
   my $request_id  = $param->{request_id};
   my $expectedResponse_id = $param->{expectedResponse_id};
+  my $dataMethod = $param->{dataMethod};
 
   ### decrypt data
   my $decrypted_data = RainbirdController_DecryptData($hash, $data, RainbirdController_ReadPassword($hash));
@@ -2880,17 +3232,6 @@ sub RainbirdController_ResponseProcessing($$)
   ### create structure from json string
   my $decode_json = eval { decode_json($decrypted_data) };
 
-  # $decode_json =
-  # {
-  #   "jsonrpc": "2.0",
-  #   "result":
-  #   {
-  #     "length":5, 
-  #     "data":"8200030209"
-  #   }, 
-  #   "id": 666
-  # }  
-
   if ($@)
   {
     Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: JSON error while request: $@";
@@ -2898,9 +3239,8 @@ sub RainbirdController_ResponseProcessing($$)
   }
   
   if( not defined( $decode_json ) or
-    not defined( $decode_json->{id} ) or
-    not defined( $decode_json->{result} ) or
-    not defined( $decode_json->{result}->{data} ))
+    not defined( $decode_json->{id} or
+    not defined( $decode_json->{result} )))
   {
     Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: no result.data";
     return undef;
@@ -2913,41 +3253,128 @@ sub RainbirdController_ResponseProcessing($$)
     return undef;
   }
   
-  ### decode data
-  my $decoded = RainbirdController_DecodeData($hash, $decode_json->{result}->{data});
-  
-  if(not defined($decoded))
+  ### "tunnelSip"
+  if($dataMethod eq "tunnelSip")
   {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: decoded not defined";
-    return undef;
-  }
-
-  ### response
-  my $response_id = $decoded->{"responseId"};
-
-  if(not defined($response_id))
-  {
-    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: response not defined";
-    return undef;
-  }
-  
-  # check id of response message
-  if(defined($expectedResponse_id) and
-    $response_id ne $expectedResponse_id)  
-  {
-    if( $response_id eq "00" )
+    # $decode_json =
+    # {
+    #   "jsonrpc": "2.0",
+    #   "result":
+    #   {
+    #     "length":5, 
+    #     "data":"8200030209"
+    #   }, 
+    #   "id": 666
+    # }  
+  	if(not defined( $decode_json->{result}->{data} ))
     {
-      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
+      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: result data  not defined";
+      return undef;
     }
-    else
+    
+    ### decode data
+    my $decoded = RainbirdController_DecodeData($hash, $decode_json->{result}->{data});
+  
+    if(not defined($decoded))
     {
-      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"";
+      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: decoded not defined";
+      return undef;
     }
 
+    ### response
+    my $response_id = $decoded->{"responseId"};
+
+    if(not defined($response_id))
+    {
+      Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: response not defined";
+      return undef;
+    }
+
+    # check id of response message
+    if(defined($expectedResponse_id) and
+      $response_id ne $expectedResponse_id)  
+    {
+      if( $response_id eq "00" )
+      {
+        Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
+      }
+      else
+      {
+        Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"";
+      }
+
+      return undef;
+    }
+
+    return $decoded;
+  }
+  ### "getWifiParams"
+  elsif($dataMethod eq "getWifiParams")
+  {
+    # {
+    #   "jsonrpc": "2.0", 
+    #   "result":
+    #   {
+    #     "macAddress":"AA:BB:CC:DD:EE:FF", 
+    #     "localIpAddress":"192.168.0.77", 
+    #     "localNetmask":"255.255.255.0", 
+    #     "localGateway":"192.168.0.1", 
+    #     "rssi":-57, "wifiSsid":"MYWLAN", 
+    #     "wifiPassword":"password", 
+    #     "wifiSecurity":"wpa2-aes", 
+    #     "apTimeoutNoLan":20, 
+    #     "apTimeoutIdle":20, 
+    #     "apSecurity":"unknown", 
+    #     "stickVersion":"Rain Bird Stick Rev C/1.63"
+    #   }, 
+    #   "id": 29
+    # }"
+    
+  	my $decoded = $decode_json->{result};
+    return $decoded;
+  }
+  ### "getNetworkStatus"
+  elsif($dataMethod eq "getNetworkStatus")
+  {
+    # {
+    #   "jsonrpc": "2.0",
+    #   "result":
+    #   {
+    #     "networkUp":true, 
+    #     "internetUp":true
+    #   }, 
+    #   "id": 30
+    # }  	
+    my $decoded = $decode_json->{result};
+    return $decoded;
+  }
+  ### "getSettings"
+  elsif($dataMethod eq "getSettings")
+  {
+    # {
+    #   "jsonrpc": "2.0",
+    #   "result":
+    #   {
+    #     "country":"DE", 
+    #     "code":"12345", 
+    #     "globalDisable":false, 
+    #     "numPrograms":0, 
+    #     "programOptOutMask":"00", 
+    #     "SoilTypes": [] , 
+    #     "FlowRates": [] , 
+    #     "FlowUnits": [] 
+    #   }, 
+    #   "id": 30
+    # }     
+    my $decoded = $decode_json->{result};
+    return $decoded;
+  }
+  ### not defined
+  else
+  {
+    Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: dataMethod \"$dataMethod\" not defined";
     return undef;
   }
-
-  return $decoded;
 }
 
 #####################################
@@ -3232,7 +3659,7 @@ sub RainbirdController_DecryptData($$$)
   $decrypteddata =~ s/\s+$//;
   
   Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"";
-  #Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
+  Log3 $name, 5, "RainbirdController ($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"";
   
   return $decrypteddata;
 }
