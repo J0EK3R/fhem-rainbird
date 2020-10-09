@@ -1,4 +1,6 @@
 # fhem-rainbird
+This repository contains two modules for the **[FHEM](https://fhem.de) house automation system** written in **Perl** to communicate with a **Rain Bird Irrigation Controller**.
+
 The [FHEM](https://fhem.de) RainbirdController interacts with **LNK WiFi Module** of the Rain Bird Irrigation System.
 
 There is a FHEM module **RainbirdController** which represents the irrigation **controller device** and handles the communication.
