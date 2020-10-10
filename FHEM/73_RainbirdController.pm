@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.8.0';
+my $VERSION = '1.8.1';
 my $DefaultInterval = 60;       # default value for the polling interval in seconds
 my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
 my $DefaultTimeout = 5;         # default value for response timeout in seconds
@@ -76,7 +76,6 @@ sub RainbirdController_GetSerialNumber($;$);
 
 ### dynamic device infos
 sub RainbirdController_SetWaterBudget($$;$);
-sub RainbirdController_GetRainSensorState($;$);
 sub RainbirdController_GetDeviceState($;$);
 sub RainbirdController_GetWifiParams($;$);
 sub RainbirdController_GetNetworkStatus($;$);
@@ -97,6 +96,11 @@ sub RainbirdController_SetCurrentDate($$$$;$);
 ### RainDelay
 sub RainbirdController_GetRainDelay($;$);
 sub RainbirdController_SetRainDelay($$;$);
+
+### RainSensor
+sub RainbirdController_GetRainSensorState($;$);
+sub RainbirdController_GetRainSensorBypass($;$);
+sub RainbirdController_SetRainSensorBypass($$;$);
 
 sub RainbirdController_GetCurrentIrrigation($;$);
 sub RainbirdController_GetActiveStation($;$);
@@ -146,31 +150,149 @@ my %KnownModels = (
   3 => "ESP-RZXe Serie",
 );
 
+# startup of the app
+# ModelAndVersionRequest
+# -> {"id":34271,"method":"tunnelSip","params":{"length":1,"data":"02"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":5, "data":"8200030209"}, "id": 34271}
+# -> {"id":19010,"method":"getWifiParams","params":{},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"macAddress":"AA:BB:CC:DD:EE:FF", "localIpAddress":"192.168.0.77", "localNetmask":"255.255.255.0", "localGateway":"192.168.0.1", "rssi":-55, "wifiSsid":"My.WLANr", "wifiPassword":"Password", "wifiSecurity":"wpa2-aes", "apTimeoutNoLan":20, "apTimeoutIdle":20, "apSecurity":"unknown", "stickVersion":"Rain Bird Stick Rev C/1.63"}, "id": 19010}
+# -> {"id":61707,"method":"getNetworkStatus","params":{},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"networkUp":true, "internetUp":true}, "id": 61707}
+# AvailableStationsRequest
+# -> {"id":41372,"method":"tunnelSip","params":{"length":2,"data":"0300"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"8300FF000000"}, "id": 41372}
+# CurrentTimeGetRequest
+# -> {"id":22493,"method":"tunnelSip","params":{"length":1,"data":"10"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":4, "data":"90050C2E"}, "id": 22493}
+# CurrentDateGetRequest
+# -> {"id":4698,"method":"tunnelSip","params":{"length":1,"data":"12"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":4, "data":"920AA7E4"}, "id": 4698}
+# RainDelayGetRequest
+# -> {"id":26966,"method":"tunnelSip","params":{"length":1,"data":"36"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":3, "data":"B60000"}, "id": 26966}
+# CurrentRainSensorStateRequest
+# -> {"id":58048,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 58048}
+# CurrentIrrigationStateRequest
+# -> {"id":23167,"method":"tunnelSip","params":{"length":1,"data":"48"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"C801"}, "id": 23167}
+# WaterBudgetRequest
+# -> {"id":1606,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":4, "data":"B0FF0064"}, "id": 1606}
+# CurrentScheduleRequest
+# -> {"id":18338,"method":"tunnelSip","params":{"length":3,"data":"200000"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":4, "data":"A0000000"}, "id": 18338}
+# CurrentScheduleRequest Zone 1
+# -> {"id":25843,"method":"tunnelSip","params":{"length":3,"data":"200001"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":14, "data":"A00001141E9090909090032B0200"}, "id": 25843}
+# Zone 2 - 7
+# CurrentScheduleRequest Zone 8
+# -> {"id":16753,"method":"tunnelSip","params":{"length":3,"data":"200008"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":14, "data":"A0000800909090909090007F0200"}, "id": 16753}
+# WaterBudgetRequest
+# -> {"id":35389,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":4, "data":"B0FF0064"}, "id": 35389}
+# getSettings
+# -> {"id":43605,"method":"getSettings","params":{},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"country":"DE", "code":"12345", "globalDisable":false, "numPrograms":0, "programOptOutMask":"00", "SoilTypes": [] , "FlowRates": [] , "FlowUnits": [] }, "id": 43605}
+# Unknown21Request
+# -> {"id":19075,"method":"tunnelSip","params":{"length":14,"data":"2100070A363C90909090037F0100"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 19075}
+# -> {"id":21006,"method":"tunnelSip","params":{"length":14,"data":"2100070A363C90909090037F0100"},"jsonrpc":"2.0"}
+# -> {"id":20153,"method":"tunnelSip","params":{"length":14,"data":"2100070A363C90909090037F0100"},"jsonrpc":"2.0"}
+# -> {"id":60743,"method":"tunnelSip","params":{"length":14,"data":"2100070A363C90909090037F0100"},"jsonrpc":"2.0"}
+# Unknown21Request
+# -> {"id":15701,"method":"tunnelSip","params":{"length":4,"data":"21000000"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 15701}
+# Unknown31Request (save settings)
+# -> {"id":37309,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 37309}
 
-# Some captured requests:
-# {"id":56699,"method":"getWifiParams","params":{},"jsonrpc":"2.0"}
-# {"id":3705,"method":"getNetworkStatus","params":{},"jsonrpc":"2.0"}
-# {"id":52139,"method":"tunnelSip","params":{"length":2,"data":"0300"},"jsonrpc":"2.0"}       -> AvailableStationsRequest
-# {"id":32497,"method":"tunnelSip","params":{"length":1,"data":"10"},"jsonrpc":"2.0"}         -> CurrentTimeGetRequest
-# {"id":37666,"method":"tunnelSip","params":{"length":1,"data":"12"},"jsonrpc":"2.0"}         -> CurrentDateGetRequest
-# {"id":43829,"method":"tunnelSip","params":{"length":1,"data":"36"},"jsonrpc":"2.0"}         -> RainDelayGetRequest
-# {"id":10371,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}         -> CurrentRainSensorStateRequest
-# {"id":33655,"method":"tunnelSip","params":{"length":1,"data":"48"},"jsonrpc":"2.0"}         -> CurrentIrrigationStateRequest
-# {"id":9937,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"}        -> WaterBudgetRequest
-# {"id":29038,"method":"tunnelSip","params":{"length":3,"data":"200000"},"jsonrpc":"2.0"}     -> CurrentScheduleRequest
-# {"id":19243,"method":"tunnelSip","params":{"length":3,"data":"200001"},"jsonrpc":"2.0"}     
-# {"id":10162,"method":"tunnelSip","params":{"length":3,"data":"200002"},"jsonrpc":"2.0"}
-# {"id":22838,"method":"tunnelSip","params":{"length":3,"data":"200003"},"jsonrpc":"2.0"}
-# {"id":61229,"method":"tunnelSip","params":{"length":3,"data":"200004"},"jsonrpc":"2.0"} 15
-# {"id":22305,"method":"tunnelSip","params":{"length":3,"data":"200005"},"jsonrpc":"2.0"} 16
-# {"id":39195,"method":"tunnelSip","params":{"length":3,"data":"200006"},"jsonrpc":"2.0"} 17
-# {"id":50342,"method":"tunnelSip","params":{"length":3,"data":"200007"},"jsonrpc":"2.0"} 18
-# {"id":27712,"method":"tunnelSip","params":{"length":3,"data":"200008"},"jsonrpc":"2.0"} 19
-# {"id":42833,"method":"tunnelSip","params":{"length":2,"data":"30FF"},"jsonrpc":"2.0"} 20    -> WaterBudgetRequest
-# {"id":37789,"method":"getSettings","params":{},"jsonrpc":"2.0"}
-# {"id":45783,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}       -> CurrentStationsActiveRequest
-# {"id":19338,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"} 23    -> GetIrrigationStateRequest
+# activate rain sensor (bypass off)
+# -> {"id":8790,"method":"tunnelSip","params":{"length":4,"data":"21000080"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 8790}
+# CurrentRainSensorStateRequest
+# -> {"id":61764,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 61764}
+# deactivate rain sensor (bypass on)
+# -> {"id":8790,"method":"tunnelSip","params":{"length":4,"data":"21000000"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 8790}
+
+# bypass disable
 # 
+# -> {"id":51573,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 51573}
+#
+# -> {"id":53635,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":10, "data":"BB000001000006010476"}, "id": 53635}
+#
+# -> {"id":42194,"method":"tunnelSip","params":{"length":4,"data":"21000080"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 42194}
+#
+# -> {"id":57793,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 57793}
+#
+# -> {"id":32022,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 32022}
+
+# bypass enable
+#
+# -> {"id":46307,"method":"tunnelSip","params":{"length":4,"data":"21000000"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 46307}
+#
+# -> {"id":63601,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 63601}
+#
+# -> {"id":37698,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 37698}
+#
+# -> {"id":55046,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 55046}
+#
+# -> {"id":16521,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":10, "data":"BB000001000006010366"}, "id": 16521} 
+
+# activate seasonal adjust
+# -> {"id":33095,"method":"setWeatherAdjustmentMask","params":{"globalDisable":true,"numPrograms":0,"programOptOutMask":"00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{}, "id": 33095}
+#
+# -> {"id":13544,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 13544}
+#
+# -> {"id":8078,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 8078}
+#
+
+# deaktivate seasonal adjust
+# -> {"id":1118,"method":"setWeatherAdjustmentMask","params":{"globalDisable":false,"numPrograms":0,"programOptOutMask":"00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{}, "id": 1118}
+#
+# -> {"id":18922,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 18922}
+#
+# -> {"id":48453,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 48453}
+
+# adjust 50%
+# -> {"id":14437,"method":"tunnelSip","params":{"length":4,"data":"31FF0096"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 14437}
+#
+# -> {"id":62636,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 62636}
+
+# adjust 100%
+# -> {"id":51469,"method":"tunnelSip","params":{"length":4,"data":"31FF00C8"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 51469}
+#
+# -> {"id":16958,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0000000000"}, "id": 16958}
+
+# adjust 0%
+# -> {"id":57907,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 57907}
+#
+# -> {"id":37653,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
+# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0000000000"}, "id": 37653}
 
 
 ### format of a command entry
@@ -217,11 +339,24 @@ my %ControllerCommands = (
     "parameter3" => 3},
   "CurrentScheduleRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
     "parameter1" => 4},  # ZoneId
-  ### still unknown - length OK
-  "Unknown21Request" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 4, 
-    "parameter1" => 2, 
-    "parameter2" => 1, 
-    "parameter3" => 1},
+  "GetRainSensorBypassRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
+    "parameter1" => 4},  # ZoneId -> 0!
+  "SetRainSensorBypassRequest" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 4, 
+    "parameter1" => 4,  # id 
+    "parameter2" => 2},
+  "SetScheduleRequest" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 14, 
+    "parameter1"  => 4,  # zoneId 
+    "parameter2"  => 2,  # timespan 
+    "parameter3"  => 2,  # timer1
+    "parameter4"  => 2,  # timer2
+    "parameter5"  => 2,  # timer3
+    "parameter6"  => 2,  # timer4
+    "parameter7"  => 2,  # timer5
+    "parameter8"  => 2, 
+    "parameter9"  => 2,  # mode 
+    "parameter10" => 2,  # weekday 
+    "parameter11" => 2,  # interval 
+    "parameter12" => 2}, # intervaldaysleft
   # not supported
     # FF ->
     # "data" : "B0FF0064",
@@ -372,35 +507,38 @@ my %ControllerResponses = (
   # }
   "Settings" => {"type" => "GetSettingsResponse"},
 
-  "00" => {"length" =>  3, "type" => "NotAcknowledgeResponse", 
+  "00" => {6 => {"type" => "NotAcknowledgeResponse", 
     "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
-    "NAKCode" => {"position" => 4, "length" => 2, "knownvalues" => {"1" => "[1]: command not supported", "2" => "[2]: wrong number of parameters", "4" => "[4]: illegal parameter",} } },
-  "01" => {"length" =>  2, "type" => "AcknowledgeResponse", 
-    "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"} },
-  "82" => {"length" =>  5, "type" => "ModelAndVersionResponse", 
+    "NAKCode" => {"position" => 4, "length" => 2, "knownvalues" => {"1" => "[1]: command not supported", "2" => "[2]: wrong number of parameters", "4" => "[4]: illegal parameter",} } } },
+  "01" => {4 => {"type" => "AcknowledgeResponse", 
+    "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"} } },
+  "82" => {10 => {"type" => "ModelAndVersionResponse", 
     "modelID" => {"position" => 2, "length" => 4}, 
     "protocolRevisionMajor" => {"position" => 6, "length" => 2}, 
-    "protocolRevisionMinor" => {"position" => 8, "length" => 2} },
-  "83" => {"length" =>  6, "type" => "AvailableStationsResponse", 
+    "protocolRevisionMinor" => {"position" => 8, "length" => 2} } },
+  "83" => {12 => {"type" => "AvailableStationsResponse", 
     "pageNumber" => {"position" => 2, "length" => 2}, 
-    "setStations" => {"position" => 4, "length" => 8} },
-  "84" => {"length" =>  3, "type" => "CommandSupportResponse", 
+    "setStations" => {"position" => 4, "length" => 8} } },
+  "84" => {6 => {"type" => "CommandSupportResponse", 
     "commandEcho" => {"position" => 2, "length" => 2, "format" => "%02X"}, 
-    "support" => {"position" => 4, "length" => 2} },
-  "85" => {"length" =>  9, "type" => "SerialNumberResponse", 
-    "serialNumber" => {"position" => 2, "length" => 16} },
-  "86" => {"length" =>  9, "type" => "Unknown06Response", 
+    "support" => {"position" => 4, "length" => 2} } },
+  "85" => {18 => {"type" => "SerialNumberResponse", 
+    "serialNumber" => {"position" => 2, "length" => 16} } },
+  "86" => {18 => {"type" => "Unknown06Response", 
     "result1" => {"position" => 2, "length" => 8, "format" => "%X"}, 
-    "result2" => {"position" => 10, "length" => 8, "format" => "%X"}},
-  "90" => {"length" =>  4, "type" => "CurrentTimeGetResponse", 
+    "result2" => {"position" => 10, "length" => 8, "format" => "%X"} } },
+  "90" => {8 => {"type" => "CurrentTimeGetResponse", 
     "hour" => {"position" => 2, "length" => 2}, 
     "minute" => {"position" => 4, "length" => 2}, 
-    "second" => {"position" => 6, "length" => 2} },
-  "92" => {"length" =>  4, "type" => "CurrentDateGetResponse", 
+    "second" => {"position" => 6, "length" => 2} } },
+  "92" => {8 => {"type" => "CurrentDateGetResponse", 
     "day" => {"position" => 2, "length" => 2}, 
     "month" => {"position" => 4, "length" => 1}, 
-    "year" => {"position" => 5, "length" => 3} },
-  "A0" => {"length" =>  14, "type" => "CurrentScheduleResponse", 
+    "year" => {"position" => 5, "length" => 3} } },
+  "A0" => {
+    8 => {"type" => "GetRainSensorBypassResponse", 
+      "bypass" => {"position" => 6, "length" => 2, "knownvalues" => {"0" => "on", "128" => "off"} } },
+  	28 => {"type" => "CurrentScheduleResponse", 
     "zoneId"           => {"position" =>  2, "length" => 4}, 
     "timespan"         => {"position" =>  6, "length" => 2}, 
     "timer1"           => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
@@ -412,16 +550,16 @@ my %ControllerResponses = (
     "mode"             => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
     "weekday"          => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
     "interval"         => {"position" => 24, "length" => 2}, 
-    "intervaldaysleft" => {"position" => 26, "length" => 2}},
-  "B0" => {"length" =>  4, "type" => "WaterBudgetResponse", 
+    "intervaldaysleft" => {"position" => 26, "length" => 2} } },
+  "B0" => {8 => {"type" => "WaterBudgetResponse", 
     "programCode" => {"position" => 2, "length" => 2}, 
-    "seasonalAdjust" => {"position" => 4, "length" => 4} },
-  "B2" => {"length" => 18, "type" => "ZonesSeasonalAdjustFactorResponse", 
+    "seasonalAdjust" => {"position" => 4, "length" => 4} } },
+  "B2" => {36 => {"type" => "ZonesSeasonalAdjustFactorResponse", 
     "programCode" => {"position" => 2, "length" => 2}, 
-    "stationsSA" => {"position" => 4, "length" => 32} },
-  "B6" => {"length" =>  3, "type" => "RainDelaySettingResponse", 
-    "delaySetting" => {"position" => 2, "length" => 4} },
-  "BB" => {"length" =>  10, "type" => "GetIrrigationStateResponse", 
+    "stationsSA" => {"position" => 4, "length" => 32} } },
+  "B6" => {6 => {"type" => "RainDelaySettingResponse", 
+    "delaySetting" => {"position" => 2, "length" => 4} } },
+  "BB" => {20 => {"type" => "GetIrrigationStateResponse", 
     "unknown2" => {"position" => 2, "length" => 2},
     "unknown4" => {"position" => 4, "length" => 2},
     "unknown6" => {"position" => 6, "length" => 2},
@@ -429,20 +567,20 @@ my %ControllerResponses = (
     "unknown10" => {"position" => 10, "length" => 2},
     "activeZone" => {"position" => 12, "length" => 2},
     "unknown14" => {"position" => 14, "length" => 2},
-    "secondsLeft" => {"position" => 16, "length" => 4}, },
-  "BD" => {"length" =>  6, "type" => "Unknown3DResponse", 
-    "sensorState" => {"position" => 2, "length" => 2} },
-  "BE" => {"length" =>  2, "type" => "CurrentRainSensorStateResponse", 
-    "sensorState" => {"position" => 2, "length" => 2} },
-  "BF" => {"length" =>  6, "type" => "CurrentStationsActiveResponse", 
+    "secondsLeft" => {"position" => 16, "length" => 4} } },
+  "BD" => {12 => {"type" => "Unknown3DResponse", 
+    "sensorState" => {"position" => 2, "length" => 2} } },
+  "BE" => {4 => {"type" => "CurrentRainSensorStateResponse", 
+    "sensorState" => {"position" => 2, "length" => 2} } },
+  "BF" => {12 => {"type" => "CurrentStationsActiveResponse", 
     "pageNumber" => {"position" => 2, "length" => 2}, 
-    "activeStations" => {"position" => 4, "length" => 8} },
-  "C8" => {"length" =>  2, "type" => "CurrentIrrigationStateResponse", 
-    "irrigationState" => {"position" => 2, "length" => 2} },
-  "CA" => {"length" =>  6, "type" => "ControllerEventTimestampResponse", 
+    "activeStations" => {"position" => 4, "length" => 8} } },
+  "C8" => {4 => {"type" => "CurrentIrrigationStateResponse", 
+    "irrigationState" => {"position" => 2, "length" => 2} } },
+  "CA" => {12 => {"type" => "ControllerEventTimestampResponse", 
     "eventId" => {"position" => 2, "length" => 2}, 
-    "timestamp" => {"position" => 4, "length" => 8} },
-  "CC" => {"length" => 16, "type" => "CombinedControllerStateResponse", 
+    "timestamp" => {"position" => 4, "length" => 8} } },
+  "CC" => {32 => {"type" => "CombinedControllerStateResponse", 
     "hour" => {"position" => 2, "length" => 2}, 
     "minute" => {"position" => 4, "length" => 2}, 
     "second" => {"position" => 6, "length" => 2}, 
@@ -454,7 +592,7 @@ my %ControllerResponses = (
     "irrigationState" => {"position" => 20, "length" => 2}, 
     "seasonalAdjust" => {"position" => 22, "length" => 4}, 
     "remainingRuntime" => {"position" => 26, "length" => 4}, 
-    "activeStation" => {"position" => 30, "length" => 2} }
+    "activeStation" => {"position" => 30, "length" => 2} } }
 );
 
 my $DEFAULT_PAGE = 0;
@@ -923,6 +1061,20 @@ sub RainbirdController_Set($@)
     RainbirdController_SetRainDelay($hash, $days);
   } 
 
+  ### RainSensorBypass
+  elsif ( lc $cmd eq lc 'RainSensorBypass' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+
+    return "usage: $cmd on|off"
+      if ( @args != 1 );
+
+    my $onoff = lc $args[0];
+    
+    RainbirdController_SetRainSensorBypass($hash, $onoff);
+  } 
+
   ### SynchronizeDateTime
   elsif ( lc $cmd eq lc 'SynchronizeDateTime' )
   {
@@ -1059,6 +1211,7 @@ sub RainbirdController_Set($@)
       $list .= " ClearReadings:noArg";
       $list .= " DeletePassword:noArg";
       $list .= " RainDelay";
+      $list .= " RainSensorBypass:on,off";
       $list .= " Stop:noArg";
       $list .= " SynchronizeDateTime:noArg";
       $list .= " Date";
@@ -1168,8 +1321,17 @@ sub RainbirdController_Get($@)
     RainbirdController_GetCurrentDate($hash);
   } 
   
-  ### RainsensorState
-  elsif ( lc $cmd eq lc 'RainsensorState' )
+  ### RainSensorBypass
+  elsif ( lc $cmd eq lc 'RainSensorBypass' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+    
+    RainbirdController_GetRainSensorBypass($hash);
+  } 
+  
+  ### RainSensorState
+  elsif ( lc $cmd eq lc 'RainSensorState' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -1303,6 +1465,7 @@ sub RainbirdController_Get($@)
       $list .= " ModelAndVersion:noArg" if($hash->{EXPERTMODE});
       $list .= " NetworStatus:noArg" if($hash->{EXPERTMODE});
       $list .= " RainDelay:noArg" if($hash->{EXPERTMODE});
+      $list .= " RainSensorBypass:noArg" if($hash->{EXPERTMODE});
       $list .= " RainSensorState:noArg" if($hash->{EXPERTMODE});
       $list .= " SerialNumber:noArg" if($hash->{EXPERTMODE});
       $list .= " Settings:noArg" if($hash->{EXPERTMODE});
@@ -1457,7 +1620,8 @@ sub RainbirdController_GetDeviceState($;$)
   my $getCurrentTime = sub { RainbirdController_GetCurrentTime($hash, $getWifiParams); };
   my $getCurrentDate = sub { RainbirdController_GetCurrentDate($hash, $getCurrentTime); };
   my $getRainSensorState = sub { RainbirdController_GetRainSensorState($hash, $getCurrentDate); };
-  my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorState); };
+  my $getRainSensorBypass = sub { RainbirdController_GetRainSensorBypass($hash, $getRainSensorState); };
+  my $getCurrentIrrigation = sub { RainbirdController_GetCurrentIrrigation($hash, $getRainSensorBypass); };
   my $getRainDelay = sub { RainbirdController_GetRainDelay($hash, $getCurrentIrrigation); };
 
   ### static info - only get once:
@@ -1742,49 +1906,6 @@ sub RainbirdController_SetWaterBudget($$;$)
     
   # send command
   RainbirdController_Command($hash, $resultCallback, $command, $budget );
-}
-
-#####################################
-# GetRainSensorState
-#####################################
-sub RainbirdController_GetRainSensorState($;$)
-{
-  my ( $hash, $callback ) = @_;
-  my $name = $hash->{NAME};
-  
-  my $command = "CurrentRainSensorState";
-  
-  Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState";
-    
-  # definition of the lambda function wich is called to process received data
-  my $resultCallback = sub 
-  {
-    my ( $result, $sendData ) = @_;
-    
-    Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState lambda";
-    
-    if( defined($result) )
-    {
-      readingsBeginUpdate($hash);
-
-      if( defined($result->{"sensorState"}) )
-      {
-        readingsBulkUpdate( $hash, 'rainSensorState', $result->{"sensorState"}, 1 );
-      }
-
-      readingsEndUpdate( $hash, 1 );
-    }
-
-    # if there is a callback then call it
-    if( defined($callback) )
-    {
-      Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState callback";
-      $callback->();
-    }
-  }; 
-    
-  # send command
-  RainbirdController_Command($hash, $resultCallback, $command );
 }
 
 #####################################
@@ -2273,6 +2394,139 @@ sub RainbirdController_SetRainDelay($$;$)
     
   # send command
   RainbirdController_Command($hash, $resultCallback, $command, $days );
+}
+
+#####################################
+# GetRainSensorState
+#####################################
+sub RainbirdController_GetRainSensorState($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+  
+  my $command = "CurrentRainSensorState";
+  
+  Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"sensorState"}) )
+      {
+        readingsBulkUpdate( $hash, 'rainSensorState', $result->{"sensorState"}, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetRainSensorState callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command );
+}
+
+#####################################
+# GetRainSensorBypass
+#####################################
+sub RainbirdController_GetRainSensorBypass($;$)
+{
+  my ( $hash, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  my $command = "GetRainSensorBypass";
+  my $onoff;
+    
+  Log3 $name, 4, "RainbirdController ($name) - GetRainSensorBypass";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - GetRainSensorBypass lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      if( defined($result->{"bypass"}) )
+      {
+        readingsBulkUpdate( $hash, 'rainSensorBypass', $result->{"bypass"}, 1 );
+      }
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - GetRainSensorBypass callback";
+      $callback->();
+    }
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command, 0 );
+}
+
+#####################################
+# SetRainSensorBypass
+#####################################
+sub RainbirdController_SetRainSensorBypass($$;$)
+{
+  my ( $hash, $value, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  my $command = "SetRainSensorBypass";
+  my $onoff;
+    
+  if(defined($value) and
+    (($value eq 'on') or
+    $value != 0))
+  {
+    $onoff = 0x00;
+  }
+  else
+  {
+    $onoff = 0x80;
+  }
+    
+  Log3 $name, 4, "RainbirdController ($name) - SetRainSensorBypass";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - SetRainSensorBypass lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      readingsEndUpdate( $hash, 1 );
+    }
+
+    # update reading activeStations
+    RainbirdController_GetRainSensorBypass($hash, $callback);
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command, 0, $onoff );
 }
 
 #####################################
@@ -3468,87 +3722,112 @@ sub RainbirdController_DecodeData($$)
   my ( $hash, $data ) = @_;
   my $name = $hash->{NAME};
   
-  my $response_id = substr($data, 0, 2);
-  
   Log3 $name, 5, "RainbirdController ($name) - decode: data \"" . $data . "\"";
 
+  my $response_id = substr($data, 0, 2);
+  my $responseDataLength = length($data);
+  
   my %result = (
     "identifier" => "Rainbird",
     "responseId" => $response_id,
+    "responseDataLength" => $responseDataLength,
     "data" => $data,
   );
   
 
   # find response-structure in hash "ControllerResponses"
-  my $cmd_template = $ControllerResponses{$response_id};
-  if( defined( $cmd_template ) )
+  my $responseHash = $ControllerResponses{$response_id};
+  
+  if( not defined( $responseHash ) )
   {
-    # $cmd_template:
-    #  "82" => 
-    #  {
-    #     "length" => 5, 
-    #     "type" => "ModelAndVersionResponse", 
-    #     "modelID" => 
-    #     {
-    #       "position" => 2, 
-    #       "length" => 4
-    #     },
-    #     "protocolRevisionMajor" => 
-    #     {
-    #       "position" => 6, 
-    #       "length" => 2
-    #     },
-    #     "protocolRevisionMinor" => 
-    #     {
-    #       "position" => 8, 
-    #       "length" => 2
-    #     }
-    #  },
-
-    $result{"type"} = $cmd_template->{"type"};
-
-    while (my($key, $value) = each(%{$cmd_template})) 
-    {
-      if(ref($value) eq 'HASH' and
-        defined($value->{"position"}) and
-        defined($value->{"length"}))
-      {
-        my $currentValue = hex(substr($data, $value->{"position"}, $value->{"length"}));
-
-        my $format = $value->{"format"};
-        my $knownValues = $value->{"knownvalues"};
-        my $converter = $value->{"converter"};
-      
-        ### if converter is defined
-        if(defined($converter))
-        {
-          $currentValue = &$converter($currentValue);
-        }
-
-        ### if knownValues is defined
-        if(defined($knownValues) and
-          ref($knownValues) eq 'HASH' and
-          defined($knownValues->{"$currentValue"}))
-        {
-          $currentValue =  $knownValues->{$currentValue};
-        }
-      
-        ### if format is defined?
-        elsif(defined($format) and
-          $format ne "")
-        {
-          $currentValue = sprintf($format, $currentValue);    
-        }
-      
-        Log3 $name, 5, "RainbirdController ($name) - decode: insert $key = " . $currentValue;
-
-        $result{$key} = $currentValue;        
-      }
-    }
+    Log3 $name, 2, "RainbirdController ($name) - decode: ControllerResponse \"" . $response_id . "\" not found!";
   }
   else
   {
-    Log3 $name, 2, "RainbirdController ($name) - decode: ControllerResponse \"" . $response_id . "\" not found!";
+    my $cmd_template = $responseHash->{$responseDataLength};
+    if( not defined( $cmd_template ) )
+    {
+      Log3 $name, 2, "RainbirdController ($name) - decode: ControllerResponse \"" . $response_id . "\" with length \"" . $responseDataLength . "\"not found!";
+    }
+    else
+    {
+      # $cmd_template:
+      #  "82" => 
+      #  {
+      #     "length" => 5, 
+      #     "type" => "ModelAndVersionResponse", 
+      #     "modelID" => 
+      #     {
+      #       "position" => 2, 
+      #       "length" => 4
+      #     },
+      #     "protocolRevisionMajor" => 
+      #     {
+      #       "position" => 6, 
+      #       "length" => 2
+      #     },
+      #     "protocolRevisionMinor" => 
+      #     {
+      #       "position" => 8, 
+      #       "length" => 2
+      #     }
+      #  },
+
+      $result{"type"} = $cmd_template->{"type"};
+
+      while (my($key, $value) = each(%{$cmd_template})) 
+      {
+        if(ref($value) eq 'HASH' and
+          defined($value->{"position"}) and
+          defined($value->{"length"}))
+        {
+          my $position = $value->{"position"};
+          my $length = $value->{"length"};
+      
+          if($position >= $responseDataLength)
+          {
+            Log3 $name, 3, "RainbirdController ($name) - decode: [$key] string to small";
+          }
+          elsif(($position + $length) > $responseDataLength)
+          {
+            Log3 $name, 3, "RainbirdController ($name) - decode: [$key] string to small";
+          }
+          else
+          {
+            my $currentValue = hex(substr($data, $value->{"position"}, $value->{"length"}));
+
+            my $format = $value->{"format"};
+            my $knownValues = $value->{"knownvalues"};
+            my $converter = $value->{"converter"};
+
+            ### if converter is defined
+            if(defined($converter))
+            {
+              $currentValue = &$converter($currentValue);
+            }
+
+            ### if knownValues is defined
+            if(defined($knownValues) and
+              ref($knownValues) eq 'HASH' and
+              defined($knownValues->{"$currentValue"}))
+            {
+              $currentValue =  $knownValues->{$currentValue};
+            }
+
+            ### if format is defined?
+            elsif(defined($format) and
+              $format ne "")
+            {
+              $currentValue = sprintf($format, $currentValue);    
+            }
+
+            Log3 $name, 5, "RainbirdController ($name) - decode: insert $key = " . $currentValue;
+
+            $result{$key} = $currentValue;
+          }
+        }
+      }
+    }
   }
   
   return \%result;
@@ -3892,6 +4171,9 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       </li>
       <li><B>RainDelay</B><a name="RainbirdControllerRainDelay"></a><br>
         Sets the delay in days.
+      </li>
+      <li><B>RainSensorBypass</B><a name="RainbirdControllerRainSensorBypass"></a><br>
+        Sets the bypass of the rainsensor on or off.
       </li>
       <li><B>Stop</B><a name="RainbirdControllerStop"></a><br>
         Stops the irrigating of all zones.

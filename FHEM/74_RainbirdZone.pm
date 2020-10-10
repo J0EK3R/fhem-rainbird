@@ -57,7 +57,7 @@ sub RainbirdZone_UpdateZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.8.0';
+my $VERSION = '1.8.1';
 
 my $DefaultIrrigationTime = 10; # default value for irrigate command without parameter in minutes
 
