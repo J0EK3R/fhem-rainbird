@@ -57,7 +57,7 @@ sub RainbirdZone_UpdateZoneActive($);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.8.1';
+my $VERSION = '1.8.2';
 
 my $DefaultIrrigationTime = 10; # default value for irrigate command without parameter in minutes
 
@@ -336,6 +336,33 @@ sub RainbirdZone_Set($@)
     IOWrite( $hash, "StopIrrigation" );
   } 
   
+  ### Stop
+  elsif ( lc $cmd eq lc 'SetSchedule' )
+  {
+    return "usage: $cmd"
+      if ( @args != 0 );
+
+    if(defined($hash->{IODev}) and
+      defined($hash->{IODev}{helper}))
+    {
+      my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $hash->{ZONEID}}{'Schedule'}; 
+
+      if(defined($zoneSchedule))
+      {
+        my $data = $zoneSchedule->{'data'};
+
+        if(defined($data) and
+          length($data) == 28)
+        {
+          my $rawValue = substr($data, 2, 26);
+          
+          # send command via RainbirdController
+          IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+        }
+      }
+    }
+  } 
+  
   ### ClearReadings
   elsif ( lc $cmd eq lc 'ClearReadings' )
   {
@@ -351,6 +378,7 @@ sub RainbirdZone_Set($@)
 
     $list .= " Stop:noArg" if ($hash->{AVAILABLE} == 1);
     $list .= " Irrigate" if ($hash->{AVAILABLE} == 1);
+    $list .= " SetSchedule:noArg" if ($hash->{AVAILABLE} == 1);
     $list .= " ClearReadings:noArg";
 
     return "Unknown argument $cmd, choose one of $list";
@@ -508,8 +536,8 @@ sub RainbirdZone_ProcessMessage($$)
     RainbirdZone_UpdateState($hash);
   }
 
-  ### CurrentScheduleResponse
-  elsif(lc $type eq lc "CurrentScheduleResponse")
+  ### GetScheduleResponse
+  elsif(lc $type eq lc "GetScheduleResponse")
   {
     #"A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
     #  "zoneId"         => {"position" =>  2, "length" => 4}, 

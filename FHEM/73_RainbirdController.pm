@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.8.1';
+my $VERSION = '1.8.2';
 my $DefaultInterval = 60;       # default value for the polling interval in seconds
 my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
 my $DefaultTimeout = 5;         # default value for response timeout in seconds
@@ -75,7 +75,7 @@ sub RainbirdController_GetCommandSupport($$;$);
 sub RainbirdController_GetSerialNumber($;$);
 
 ### dynamic device infos
-sub RainbirdController_SetWaterBudget($$;$);
+sub RainbirdController_GetWaterBudget($$;$);
 sub RainbirdController_GetDeviceState($;$);
 sub RainbirdController_GetWifiParams($;$);
 sub RainbirdController_GetNetworkStatus($;$);
@@ -110,6 +110,7 @@ sub RainbirdController_ZoneIrrigate($$$;$);
 sub RainbirdController_ZoneTest($$;$);
 ### Zone - Schedule
 sub RainbirdController_ZoneGetSchedule($$;$);
+sub RainbirdController_ZoneSetScheduleRAW($$;$);
 
 ### for testing purposes only
 sub RainbirdController_TestCMD($$$;$);
@@ -208,50 +209,6 @@ my %KnownModels = (
 # -> {"id":37309,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
 # <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 37309}
 
-# activate rain sensor (bypass off)
-# -> {"id":8790,"method":"tunnelSip","params":{"length":4,"data":"21000080"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 8790}
-# CurrentRainSensorStateRequest
-# -> {"id":61764,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 61764}
-# deactivate rain sensor (bypass on)
-# -> {"id":8790,"method":"tunnelSip","params":{"length":4,"data":"21000000"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 8790}
-
-# bypass disable
-# 
-# -> {"id":51573,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 51573}
-#
-# -> {"id":53635,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":10, "data":"BB000001000006010476"}, "id": 53635}
-#
-# -> {"id":42194,"method":"tunnelSip","params":{"length":4,"data":"21000080"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 42194}
-#
-# -> {"id":57793,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 57793}
-#
-# -> {"id":32022,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 32022}
-
-# bypass enable
-#
-# -> {"id":46307,"method":"tunnelSip","params":{"length":4,"data":"21000000"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0121"}, "id": 46307}
-#
-# -> {"id":63601,"method":"tunnelSip","params":{"length":1,"data":"3E"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"BE00"}, "id": 63601}
-#
-# -> {"id":37698,"method":"tunnelSip","params":{"length":4,"data":"31FF0064"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":2, "data":"0131"}, "id": 37698}
-#
-# -> {"id":55046,"method":"tunnelSip","params":{"length":2,"data":"3F00"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":6, "data":"BF0020000000"}, "id": 55046}
-#
-# -> {"id":16521,"method":"tunnelSip","params":{"length":2,"data":"3B00"},"jsonrpc":"2.0"}
-# <- {"jsonrpc": "2.0", "result":{"length":10, "data":"BB000001000006010366"}, "id": 16521} 
-
 # activate seasonal adjust
 # -> {"id":33095,"method":"setWeatherAdjustmentMask","params":{"globalDisable":true,"numPrograms":0,"programOptOutMask":"00"},"jsonrpc":"2.0"}
 # <- {"jsonrpc": "2.0", "result":{}, "id": 33095}
@@ -311,52 +268,54 @@ my %ControllerCommands = (
   "GetSettingsRequest" => {"method" => "getSettings", "response" => "Settings"},
   "ModelAndVersionRequest" => {"method" => "tunnelSip", "command" => "02", "response" => "82", "length" => 1},
   "AvailableStationsRequest" => {"method" => "tunnelSip", "command" => "03", "response" => "83", "length" => 2, 
-    "parameter1" => 2},
+    "parameter1" => {"length" => 2}},
   "CommandSupportRequest" => {"method" => "tunnelSip", "command" => "04", "response" => "84", "length" => 2, 
-    "parameter1" => 2}, # command like "04"
+    "parameter1" => {"length" => 2}}, # command like "04"
   "SerialNumberRequest" => {"method" => "tunnelSip", "command" => "05", "response" => "85", "length" => 1},
   ### still unknown - length OK
   "Unknown06Request" => {"method" => "tunnelSip", "command" => "06", "response" => "86", "length" => 5, 
-    "parameter1" => 2, 
-    "parameter2" => 2, 
-    "parameter3" => 2, 
-    "parameter4" => 2},
+    "parameter1" => {"length" => 2},
+    "parameter2" => {"length" => 2},
+    "parameter3" => {"length" => 2},
+    "parameter4" => {"length" => 2}},
   ### still unknown - length OK
   "Unknown07Request" => {"method" => "tunnelSip", "command" => "07", "response" => "86", "length" => 5, 
-    "parameter1" => 2, 
-    "parameter2" => 2, 
-    "parameter3" => 2, 
-    "parameter4" => 2},
+    "parameter1" => {"length" => 2},
+    "parameter2" => {"length" => 2},
+    "parameter3" => {"length" => 2},
+    "parameter4" => {"length" => 2}},
   "CurrentTimeGetRequest" => {"method" => "tunnelSip", "command" => "10", "response" => "90", "length" => 1},
   "CurrentTimeSetRequest" => {"method" => "tunnelSip", "command" => "11", "response" => "01", "length" => 4, 
-    "parameter1" => 2, 
-    "parameter2" => 2, 
-    "parameter3" => 2},
+    "parameter1" => {"length" => 2},
+    "parameter2" => {"length" => 2},
+    "parameter3" => {"length" => 2}},
   "CurrentDateGetRequest" => {"method" => "tunnelSip", "command" => "12", "response" => "92", "length" => 1},
   "CurrentDateSetRequest" => {"method" => "tunnelSip", "command" => "13", "response" => "01", "length" => 4, 
-    "parameter1" => 2, 
-    "parameter2" => 1, 
-    "parameter3" => 3},
-  "CurrentScheduleRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
-    "parameter1" => 4},  # ZoneId
+    "parameter1" => {"length" => 2},
+    "parameter2" => {"length" => 1},
+    "parameter3" => {"length" => 2}},
+  "GetScheduleRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
+    "parameter1" => {"length" => 4}},  # ZoneId 1..MaxZone
   "GetRainSensorBypassRequest" => {"method" => "tunnelSip", "command" => "20","response" => "A0", "length" => 3, 
-    "parameter1" => 4},  # ZoneId -> 0!
+    "parameter1" => {"length" => 4}},  # ZoneId -> 0!
   "SetRainSensorBypassRequest" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 4, 
-    "parameter1" => 4,  # id 
-    "parameter2" => 2},
+    "parameter1" => {"length" => 4},   # zoneId -> 0! 
+    "parameter2" => {"length" => 2}},  # 0x00: on 0x80: off
+  "SetScheduleRAWRequest" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 14, 
+    "parameter1"  => {"length" => 26, "format" => "%s"}}, # raw value like 0001141E9090909090032B0201
   "SetScheduleRequest" => {"method" => "tunnelSip", "command" => "21", "response" => "01", "length" => 14, 
-    "parameter1"  => 4,  # zoneId 
-    "parameter2"  => 2,  # timespan 
-    "parameter3"  => 2,  # timer1
-    "parameter4"  => 2,  # timer2
-    "parameter5"  => 2,  # timer3
-    "parameter6"  => 2,  # timer4
-    "parameter7"  => 2,  # timer5
-    "parameter8"  => 2, 
-    "parameter9"  => 2,  # mode 
-    "parameter10" => 2,  # weekday 
-    "parameter11" => 2,  # interval 
-    "parameter12" => 2}, # intervaldaysleft
+    "parameter1"  => {"length" => 4},  # zoneId -> 1..MaxZone 
+    "parameter2"  => {"length" => 2},  # timespan 
+    "parameter3"  => {"length" => 2},  # timer1
+    "parameter4"  => {"length" => 2},  # timer2
+    "parameter5"  => {"length" => 2},  # timer3
+    "parameter6"  => {"length" => 2},  # timer4
+    "parameter7"  => {"length" => 2},  # timer5
+    "parameter8"  => {"length" => 2},
+    "parameter9"  => {"length" => 2},  # mode 
+    "parameter10" => {"length" => 2},  # weekday 
+    "parameter11" => {"length" => 2},  # interval 
+    "parameter12" => {"length" => 2}}, # intervaldaysleft
   # not supported
     # FF ->
     # "data" : "B0FF0064",
@@ -365,54 +324,54 @@ my %ControllerCommands = (
     # "responseId" : "B0",
     # "seasonalAdjust" : "100",
     # "type" : "WaterBudgetResponse"
-  "WaterBudgetRequest" => {"method" => "tunnelSip", "command" => "30", "response" => "B0", "length" => 2,  
-    "parameter1" => 2},
-  ### still unknown
-  "Unknown31Request" => {"method" => "tunnelSip", "command" => "31", "response" => "85", "length" => 4, 
-    "parameter1" => 2, 
-    "parameter2" => 2, 
-    "parameter3" => 2},
+  "GetWaterBudgetRequest" => {"method" => "tunnelSip", "command" => "30", "response" => "B0", "length" => 2,  
+    "parameter1" => {"length" => 2}},  # ZoneId -> FF for seasonal adjust
+  ### {"id":14437,"method":"tunnelSip","params":{"length":4,"data":"31FF0096"},"jsonrpc":"2.0"}
+  "SetWaterBudgetRequest" => {"method" => "tunnelSip", "command" => "31", "response" => "01", "length" => 4, 
+    "parameter1" => {"length" => 2},  # ZoneId -> FF for seasonal adjust 
+    "parameter2" => {"length" => 2},  # ???
+    "parameter3" => {"length" => 2}}, # adjustment 0x64 = 0% 0x96 = 50% 0xC8 = 100% 
   # not supported
   "ZonesSeasonalAdjustFactorRequest" => {"method" => "tunnelSip", "command" => "32", "response" => "B2", "length" => 2,  
-    "parameter1" => 2}, 
+    "parameter1" => {"length" => 2}}, 
   "RainDelayGetRequest" => {"method" => "tunnelSip", "command" => "36", "response" => "B6", "length" => 1},
   "RainDelaySetRequest" => {"method" => "tunnelSip", "command" => "37", "response" => "01", "length" => 3, 
-    "parameter1" => 4},
+    "parameter1" => {"length" => 4}},
   # not supported
   "ManuallyRunProgramRequest" => {"method" => "tunnelSip", "command" => "38", "response" => "01", "length" => 2,
-    "parameter1" => 2}, 
+    "parameter1" => {"length" => 2}}, 
   "ManuallyRunStationRequest" => {"method" => "tunnelSip", "command" => "39", "response" => "01", "length" => 4, 
-    "parameter1" => 4,  # ZoneId
-    "parameter2" => 2}, # irrigation timespan in minutes
+    "parameter1" => {"length" => 4},  # ZoneId
+    "parameter2" => {"length" => 2}}, # irrigation timespan in minutes
   "TestStationsRequest" => {"method" => "tunnelSip", "command" => "3A", "response" => "01", "length" => 2, 
-    "parameter1" => 2},
+    "parameter1" => {"length" => 2}},
   "GetIrrigationStateRequest" => {"method" => "tunnelSip", "command" => "3B", "response" => "BB", "length" => 2,
-    "parameter1" => 2},
+    "parameter1" => {"length" => 2}},
   ### still unknown
   "Unknown3DRequest" => {"method" => "tunnelSip", "command" => "3D", "response" => "DB", "length" => 2,
-    "parameter1" => 2},
+    "parameter1" => {"length" => 2}},
   "CurrentRainSensorStateRequest" => {"method" => "tunnelSip", "command" => "3E", "response" => "BE", "length" => 1},
   "CurrentStationsActiveRequest" => {"method" => "tunnelSip", "command" => "3F", "response" => "BF", "length" => 2, 
-    "parameter1" => 2},
+    "parameter1" => {"length" => 2}},
   "StopIrrigationRequest" => {"method" => "tunnelSip", "command" => "40", "response" => "01", "length" => 1},
   ### still unknown
   "Unknown41Request" => {"method" => "tunnelSip", "command" => "41", "response" => "01", "length" => 2, 
-  	"parameter1" => 2}, # 00, FF
+   "parameter1" => {"length" => 2}}, # 00, FF
   # not supported
   "AdvanceStationRequest" => {"method" => "tunnelSip", "command" => "42", "response" => "01", "length" => 2,
-    "parameter1" => 2}, 
+    "parameter1" => {"length" => 2}}, 
   "CurrentIrrigationStateRequest" => {"method" => "tunnelSip", "command" => "48", "response" => "C8", "length" => 1},
   # not supported
   "CurrentControllerStateSet" => {"method" => "tunnelSip", "command" => "49", "response" => "01", "length" => 2, 
-    "parameter1" => 2}, 
+    "parameter1" => {"length" => 2}}, 
   # not supported
   "ControllerEventTimestampRequest" => {"method" => "tunnelSip", "command" => "4A", "response" => "CA", "length" => 2, 
-    "parameter1" => 2}, 
+    "parameter1" => {"length" => 2}}, 
   # not supported
   "StackManuallyRunStationRequest" => {"method" => "tunnelSip", "command" => "4B", "response" => "01", "length" => 4, 
-    "parameter1" => 2, 
-    "parameter2" => 1, 
-    "parameter3" => 1}, 
+    "parameter1" => {"length" => 2}, 
+    "parameter2" => {"length" => 1}, 
+    "parameter3" => {"length" => 1}}, 
   # not supported
   "CombinedControllerStateRequest" => {"method" => "tunnelSip", "command" => "4C", "response" => "CC","length" => 1 },
   ### still unknown
@@ -538,7 +497,7 @@ my %ControllerResponses = (
   "A0" => {
     8 => {"type" => "GetRainSensorBypassResponse", 
       "bypass" => {"position" => 6, "length" => 2, "knownvalues" => {"0" => "on", "128" => "off"} } },
-  	28 => {"type" => "CurrentScheduleResponse", 
+   28 => {"type" => "GetScheduleResponse", 
     "zoneId"           => {"position" =>  2, "length" => 4}, 
     "timespan"         => {"position" =>  6, "length" => 2}, 
     "timer1"           => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
@@ -551,7 +510,7 @@ my %ControllerResponses = (
     "weekday"          => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
     "interval"         => {"position" => 24, "length" => 2}, 
     "intervaldaysleft" => {"position" => 26, "length" => 2} } },
-  "B0" => {8 => {"type" => "WaterBudgetResponse", 
+  "B0" => {8 => {"type" => "GetWaterBudgetResponse", 
     "programCode" => {"position" => 2, "length" => 2}, 
     "seasonalAdjust" => {"position" => 4, "length" => 4} } },
   "B2" => {36 => {"type" => "ZonesSeasonalAdjustFactorResponse", 
@@ -1192,6 +1151,18 @@ sub RainbirdController_Set($@)
     RainbirdController_ZoneGetSchedule($hash, $zone);
   } 
   
+  ### ZoneSetScheduleRAW
+  elsif ( lc $cmd eq lc 'ZoneSetScheduleRAW' )
+  {
+    return "please set password first"
+      if ( not defined( RainbirdController_ReadPassword($hash) ) );
+
+    return "usage: $cmd <rawvalue>"
+      if ( @args != 1 );
+    
+    my $rawValue = $args[0];
+    RainbirdController_ZoneSetScheduleRAW($hash, $rawValue);
+  } 
 
   ### ClearReadings
   elsif ( lc $cmd eq lc 'ClearReadings' )
@@ -1209,18 +1180,20 @@ sub RainbirdController_Set($@)
     if ( defined( RainbirdController_ReadPassword($hash) ))
     {
       $list .= " ClearReadings:noArg";
+      $list .= " Date";
       $list .= " DeletePassword:noArg";
       $list .= " RainDelay";
       $list .= " RainSensorBypass:on,off";
       $list .= " Stop:noArg";
       $list .= " SynchronizeDateTime:noArg";
-      $list .= " Date";
       $list .= " Time";
       $list .= " Update:noArg";
+      ### expert mode:
       $list .= " IrrigateZone" if($hash->{EXPERTMODE});
       $list .= " FactoryReset:noArg" if($hash->{EXPERTMODE});
       $list .= " TestCMD" if($hash->{EXPERTMODE});
       $list .= " TestRAW" if($hash->{EXPERTMODE});
+      $list .= " ZoneSetScheduleRAW" if($hash->{EXPERTMODE});
     }
     else
     {
@@ -1455,6 +1428,7 @@ sub RainbirdController_Get($@)
     
     if ( defined( RainbirdController_ReadPassword($hash) ) )
     {
+      # expert mode
       $list .= " AvailableZones:noArg" if($hash->{EXPERTMODE});
       $list .= " CommandSupport" if($hash->{EXPERTMODE});
       $list .= " CurrentIrrigation:noArg" if($hash->{EXPERTMODE});
@@ -1863,22 +1837,22 @@ sub RainbirdController_GetCommandSupport($$;$)
 }
 
 #####################################
-# SetWaterBudget
+# RainbirdController_GetWaterBudget
 #####################################
-sub RainbirdController_SetWaterBudget($$;$)
+sub RainbirdController_GetWaterBudget($$;$)
 {
   my ( $hash, $budget, $callback ) = @_;
   my $name = $hash->{NAME};
     
-  my $command = "WaterBudget";
-  Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget";
+  my $command = "GetWaterBudget";
+  Log3 $name, 4, "RainbirdController ($name) - GetWaterBudget";
     
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
     my ( $result, $sendData ) = @_;
     
-    Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget lambda";
+    Log3 $name, 4, "RainbirdController ($name) - GetWaterBudget lambda";
     
     if( defined($result) )
     {
@@ -1899,7 +1873,7 @@ sub RainbirdController_SetWaterBudget($$;$)
     # if there is a callback then call it
     if( defined($callback) )
     {
-      Log3 $name, 4, "RainbirdController ($name) - SetWaterBudget callback";
+      Log3 $name, 4, "RainbirdController ($name) - GetWaterBudget callback";
       $callback->();
     }
   }; 
@@ -2571,7 +2545,7 @@ sub RainbirdController_ZoneGetSchedule($$;$)
   my ( $hash, $zone, $callback ) = @_;
   my $name = $hash->{NAME};
   
-  my $command = "CurrentSchedule";
+  my $command = "GetSchedule";
     
   Log3 $name, 4, "RainbirdController ($name) - ZoneGetSchedule[$zone]";
     
@@ -2588,7 +2562,7 @@ sub RainbirdController_ZoneGetSchedule($$;$)
 
       readingsEndUpdate( $hash, 1 );
 
-      # "A0" => {"length" =>  4, "type" => "CurrentScheduleResponse", 
+      # "A0" => {"length" =>  4, "type" => "GetScheduleResponse", 
       #     "zoneId"           => {"position" =>  2, "length" => 4}, 
       #     "timespan"         => {"position" =>  6, "length" => 2}, 
       #     "timer1"           => {"position" =>  8, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
@@ -2629,6 +2603,53 @@ sub RainbirdController_ZoneGetSchedule($$;$)
     
   # send command
   RainbirdController_Command($hash, $resultCallback, $command, $zone );
+}
+
+#####################################
+# ZoneSetScheduleRAW
+#####################################
+sub RainbirdController_ZoneSetScheduleRAW($$;$)
+{
+  my ( $hash, $rawValue, $callback ) = @_;
+  my $name = $hash->{NAME};
+
+  # rawValue like 0001141E9090909090032B0201
+
+  ### parameter checks 
+  if(not defined($rawValue))
+  {
+    Log3 $name, 3, "RainbirdController ($name) - ZoneSetSchedule rawValue not defined";
+  }
+  elsif(length($rawValue) != 26)
+  {
+    Log3 $name, 3, "RainbirdController ($name) - ZoneSetSchedule illegal length $rawValue";
+  }
+
+  my $zone = substr($rawValue, 2, 2);
+  
+  my $command = "SetScheduleRAW";
+    
+  Log3 $name, 4, "RainbirdController ($name) - ZoneSetSchedule[$zone]";
+    
+  # definition of the lambda function wich is called to process received data
+  my $resultCallback = sub 
+  {
+    my ( $result, $sendData ) = @_;
+    
+    Log3 $name, 4, "RainbirdController ($name) - ZoneSetSchedule[$zone] lambda";
+    
+    if( defined($result) )
+    {
+      readingsBeginUpdate($hash);
+
+      readingsEndUpdate( $hash, 1 );
+    }
+    
+    RainbirdController_ZoneGetSchedule($hash, $zone, $callback);
+  }; 
+    
+  # send command
+  RainbirdController_Command($hash, $resultCallback, $command, $rawValue );
 }
 
 #####################################
@@ -3019,7 +3040,12 @@ sub RainbirdController_TestCMD($$$;$)
       readingsEndUpdate( $hash, 1 );
     }
 
-     RainbirdController_GetDeviceState($hash, $callback); 
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - TestCMD callback";
+      $callback->();
+    }
   }; 
     
   # send command
@@ -3054,7 +3080,12 @@ sub RainbirdController_TestRAW($$;$)
       readingsEndUpdate( $hash, 1 );
     }
 
-    # RainbirdController_GetDeviceState($hash, $callback); 
+    # if there is a callback then call it
+    if( defined($callback) )
+    {
+      Log3 $name, 4, "RainbirdController ($name) - TestRAW callback";
+      $callback->();
+    }
   }; 
     
   # send command
@@ -3276,6 +3307,7 @@ sub RainbirdController_Request($$$$$)
     ### limit request id
     if($request_id >= 65536)
     {
+      $hash->{REQUESTID} = 0;
       $request_id = 0;
     }
   
@@ -3520,7 +3552,7 @@ sub RainbirdController_ResponseProcessing($$)
     #   }, 
     #   "id": 666
     # }  
-  	if(not defined( $decode_json->{result}->{data} ))
+    if(not defined( $decode_json->{result}->{data} ))
     {
       Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: result data  not defined";
       return undef;
@@ -3550,7 +3582,7 @@ sub RainbirdController_ResponseProcessing($$)
     {
       if( $response_id eq "00" )
       {
-        Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . sprintf("%X", $decoded->{"commandEcho"}) . "\"";
+        Log3 $name, 2, "RainbirdController ($name) - ResponseProcessing[ID:$request_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"";
       }
       else
       {
@@ -3584,7 +3616,7 @@ sub RainbirdController_ResponseProcessing($$)
     #   "id": 29
     # }"
     
-  	my $decoded = $decode_json->{result};
+    my $decoded = $decode_json->{result};
     return $decoded;
   }
   ### "getNetworkStatus"
@@ -3598,7 +3630,7 @@ sub RainbirdController_ResponseProcessing($$)
     #     "internetUp":true
     #   }, 
     #   "id": 30
-    # }  	
+    # }
     my $decoded = $decode_json->{result};
     return $decoded;
   }
@@ -3663,11 +3695,17 @@ sub RainbirdController_EncodeData($$@)
     my $keyName = "parameter" . $index;
     
     ### if there is an entry in hash then charLength is defined
-    my $charLength = $command_set->{$keyName};
-    
-    if(not defined($charLength))
+    my $parameterEntry = $command_set->{$keyName};
+    if(not defined($parameterEntry))
     {
       Log3 $name, 3, "RainbirdController ($name) - encode: Error \"$keyName\" not found";
+      return undef;
+    }
+    
+    my $charLength = $parameterEntry->{"length"};
+    if(not defined($charLength))
+    {
+      Log3 $name, 3, "RainbirdController ($name) - encode: Error \"$keyName\" length not found";
       return undef;
     }
 
@@ -3677,8 +3715,15 @@ sub RainbirdController_EncodeData($$@)
     ### the format entry is %H with leading 0s to reach the charlength from command_set
     ### charlength 1: %01X 
     ### charlength 2: %02X 
-    ### charlength 3: %03X 
-    $arg_placeholders .= sprintf("%%0%dX", $charLength);
+    ### charlength 3: %03X
+    my $formatString = $parameterEntry->{"format"};
+    
+    if(not defined($formatString))
+    {
+      $formatString = sprintf("%%0%dX", $charLength);
+    }
+    
+    $arg_placeholders .= $formatString;
     $arg_placeholders_charLength += $charLength;
     $args_found++
   }
