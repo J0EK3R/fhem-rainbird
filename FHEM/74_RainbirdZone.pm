@@ -48,21 +48,38 @@ sub RainbirdZone_Set($@);
 sub RainbirdZone_Parse($$);
 sub RainbirdZone_ProcessMessage($$);
 sub RainbirdZone_UpdateState($);
-sub RainbirdZone_UpdateZoneAvailable($);
-sub RainbirdZone_UpdateSchedule($);
-sub RainbirdZone_UpdateIrrigation($);
 sub RainbirdZone_UpdateZoneActive($);
+sub RainbirdZone_UpdateZoneAvailable($);
+sub RainbirdZone_Irrigate($$);
+sub RainbirdZone_Stop($);
+sub RainbirdZone_GetSchedule($);
+sub RainbirdZone_UpdateSchedule($);
+sub RainbirdZone_SetSchedule($);
+sub RainbirdZone_SetScheduleMode($$);
+sub RainbirdZone_SetScheduleTimer($$$);
+sub RainbirdZone_SetScheduleTimespan($$);
+sub RainbirdZone_SetScheduleWeekday($$);
+sub RainbirdZone_SetScheduleDayInterval($$);
+sub RainbirdZone_SetScheduleDayIntervalOffset($$);
 
 ### internal tool functions
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.8.2';
+my $VERSION = '1.8.3';
 
 my $DefaultIrrigationTime = 10; # default value for irrigate command without parameter in minutes
 
+my %ScheduleModeTable = (
+  "user" => "00",
+  "odd" => "01",
+  "even" => "02",
+  "cyclic" => "03"
+);
+
+
 #####################################
-# Initialize( $hash )
+# RainbirdZone_Initialize( $hash )
 #####################################
 sub RainbirdZone_Initialize($)
 {
@@ -97,7 +114,7 @@ sub RainbirdZone_Initialize($)
 }
 
 #####################################
-# Define( $hash, $def)
+# RainbirdZone_Define( $hash, $def)
 #####################################
 sub RainbirdZone_Define($$)
 {
@@ -183,7 +200,7 @@ sub RainbirdZone_Define($$)
 }
 
 #####################################
-# Undef( $hash, $arg )
+# RainbirdZone_Undef( $hash, $arg )
 #####################################
 sub RainbirdZone_Undef($$)
 {
@@ -197,7 +214,7 @@ sub RainbirdZone_Undef($$)
 }
 
 #####################################
-# Delete( $hash, $name )
+# RainbirdZone_Delete( $hash, $name )
 #####################################
 sub RainbirdZone_Delete($$)
 {
@@ -207,7 +224,7 @@ sub RainbirdZone_Delete($$)
 }
 
 #####################################
-# Attr( $cmd, $name, $attrName, $attrVal )
+# RainbirdZone_Attr( $cmd, $name, $attrName, $attrVal )
 #####################################
 sub RainbirdZone_Attr(@)
 {
@@ -276,7 +293,7 @@ sub RainbirdZone_Attr(@)
 }
 
 #####################################
-# Notify( $hash, $dev )
+# RainbirdZone_Notify( $hash, $dev )
 #####################################
 sub RainbirdZone_Notify($$)
 {
@@ -299,18 +316,26 @@ sub RainbirdZone_Notify($$)
 }
 
 #####################################
-# Set( $hash, $name, $cmd, @args )
+# RainbirdZone_Set( $hash, $name, $cmd, @args )
 #####################################
 sub RainbirdZone_Set($@)
 {
   my ( $hash, $name, $cmd, @args ) = @_;
-
   my $zoneId = $hash->{ZONEID};
 
   Log3 $name, 4, "RainbirdZone ($name) - Set was called: cmd= $cmd";
 
+  ### Stop
+  if ( lc $cmd eq lc 'Stop' )
+  {
+    return "usage: $cmd"
+      if ( @args != 0 );
+
+    return RainbirdZone_Stop($hash);
+  } 
+  
   ### Irrigate
-  if ( lc $cmd eq lc 'Irrigate' )
+  elsif ( lc $cmd eq lc 'Irrigate' )
   {
     return "usage: $cmd [opt: <minutes>]"
       if ( @args > 1 );
@@ -322,45 +347,117 @@ sub RainbirdZone_Set($@)
     $minutes = $args[0]
       if ( @args == 1 );
 
-    # send command via RainbirdController
-    IOWrite( $hash, "IrrigateZone", $zoneId, $minutes );
+    return RainbirdZone_Irrigate($hash, $minutes);
   } 
 
-  ### Stop
-  elsif ( lc $cmd eq lc 'Stop' )
+  ### Schedule
+  elsif ( lc $cmd eq lc 'Schedule' )
   {
     return "usage: $cmd"
       if ( @args != 0 );
 
-    # send command via RainbirdController
-    IOWrite( $hash, "StopIrrigation" );
+    return RainbirdZone_SetSchedule($hash); 
   } 
   
-  ### Stop
-  elsif ( lc $cmd eq lc 'SetSchedule' )
+  ### ScheduleDayInterval
+  elsif ( lc $cmd eq lc 'ScheduleDayInterval' )
   {
-    return "usage: $cmd"
-      if ( @args != 0 );
-
-    if(defined($hash->{IODev}) and
-      defined($hash->{IODev}{helper}))
-    {
-      my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $hash->{ZONEID}}{'Schedule'}; 
-
-      if(defined($zoneSchedule))
-      {
-        my $data = $zoneSchedule->{'data'};
-
-        if(defined($data) and
-          length($data) == 28)
-        {
-          my $rawValue = substr($data, 2, 26);
-          
-          # send command via RainbirdController
-          IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
-        }
-      }
-    }
+    return "usage: $cmd <days>"
+      if ( @args != 1);
+    
+    my $days = $args[0];
+    return RainbirdZone_SetScheduleDayInterval($hash, $days);
+  } 
+  
+  ### ScheduleDayIntervalOffset
+  elsif ( lc $cmd eq lc 'ScheduleDayIntervalOffset' )
+  {
+    return "usage: $cmd <days>"
+      if ( @args != 1);
+    
+    my $days = $args[0];
+    return RainbirdZone_SetScheduleDayIntervalOffset($hash, $days);
+  } 
+  
+  ### ScheduleMode
+  elsif ( lc $cmd eq lc 'ScheduleMode' )
+  {
+    return "usage: $cmd " . join("|", keys %ScheduleModeTable)
+      if ( @args != 1 or
+        not defined($ScheduleModeTable{$args[0]})); # check if in table
+    
+    my $modeValue = $ScheduleModeTable{$args[0]}; # get number value
+    return RainbirdZone_SetScheduleMode($hash, $modeValue);
+  } 
+  
+  ### ScheduleTimer1
+  elsif ( lc $cmd eq lc 'ScheduleTimer1' )
+  {
+    return "usage: $cmd <HH:MM>"
+      if ( @args != 1);
+    
+    my $timeString = $args[0];
+    return RainbirdZone_SetScheduleTimer($hash, 1, $timeString);
+  } 
+  
+  ### ScheduleTimer2
+  elsif ( lc $cmd eq lc 'ScheduleTimer2' )
+  {
+    return "usage: $cmd <HH:MM>"
+      if ( @args != 1);
+    
+    my $timeString = $args[0];
+    return RainbirdZone_SetScheduleTimer($hash, 2, $timeString);
+  } 
+  
+  ### ScheduleTimer3
+  elsif ( lc $cmd eq lc 'ScheduleTimer3' )
+  {
+    return "usage: $cmd <HH:MM>"
+      if ( @args != 1);
+    
+    my $timeString = $args[0];
+    return RainbirdZone_SetScheduleTimer($hash, 3, $timeString);
+  } 
+  
+  ### ScheduleTimer4
+  elsif ( lc $cmd eq lc 'ScheduleTimer4' )
+  {
+    return "usage: $cmd <HH:MM>"
+      if ( @args != 1);
+    
+    my $timeString = $args[0];
+    return RainbirdZone_SetScheduleTimer($hash, 4, $timeString);
+  } 
+  
+  ### ScheduleTimer5
+  elsif ( lc $cmd eq lc 'ScheduleTimer5' )
+  {
+    return "usage: $cmd <HH:MM>"
+      if ( @args != 1);
+    
+    my $timeString = $args[0];
+    return RainbirdZone_SetScheduleTimer($hash, 5, $timeString);
+  } 
+  
+  ### ScheduleTimespan
+  elsif ( lc $cmd eq lc 'ScheduleTimespan' )
+  {
+    return "usage: $cmd <minutes>"
+      if ( @args != 1);
+    
+    my $minutes = $args[0];
+    return RainbirdZone_SetScheduleTimespan($hash, $minutes);
+  } 
+  
+  ### ScheduleWeekday
+  elsif ( lc $cmd eq lc 'ScheduleWeekday' )
+  {
+    return "usage: $cmd <weekdays>"
+      if ( @args != 1);
+    
+    my $weekdayList = $args[0];
+    return RainbirdZone_SetScheduleWeekday($hash, $weekdayList);
   } 
   
   ### ClearReadings
@@ -377,8 +474,18 @@ sub RainbirdZone_Set($@)
     my $list = "";
 
     $list .= " Stop:noArg" if ($hash->{AVAILABLE} == 1);
-    $list .= " Irrigate" if ($hash->{AVAILABLE} == 1);
-    $list .= " SetSchedule:noArg" if ($hash->{AVAILABLE} == 1);
+    $list .= " Irrigate:slider,0,1,100" if ($hash->{AVAILABLE} == 1);
+    $list .= " Schedule:noArg" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleDayInterval:slider,1,1,14" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleDayIntervalOffset:slider,0,1,13" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleMode:" . join(",", keys %ScheduleModeTable) if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimer1:time" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimer2:time" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimer3:time" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimer4:time" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimer5:time" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleTimespan:slider,0,1,199" if ($hash->{AVAILABLE} == 1);
+    $list .= " ScheduleWeekday:multiple-strict,Mon,Tue,Wed,Thu,Fri,Sat,Sun" if ($hash->{AVAILABLE} == 1);
     $list .= " ClearReadings:noArg";
 
     return "Unknown argument $cmd, choose one of $list";
@@ -386,12 +493,11 @@ sub RainbirdZone_Set($@)
 }
 
 #####################################
-# Get( $hash, $name, $cmd, @args )
+# RainbirdZone_Get( $hash, $name, $cmd, @args )
 #####################################
 sub RainbirdZone_Get($@)
 {
   my ( $hash, $name, $cmd, @args ) = @_;
-
   my $zoneId = $hash->{ZONEID};
 
   Log3 $name, 4, "RainbirdZone ($name) - Get was called: cmd= $cmd";
@@ -402,8 +508,7 @@ sub RainbirdZone_Get($@)
     return "usage: $cmd"
       if ( @args != 0 );
 
-    # send command via RainbirdController
-    IOWrite( $hash, "ZoneGetSchedule", $zoneId );
+    return RainbirdZone_GetSchedule($hash);
   } 
 
   ### else
@@ -418,7 +523,7 @@ sub RainbirdZone_Get($@)
 }
 
 #####################################
-# Parse( $rainbirdController_hash, $message )
+# RainbirdZone_Parse( $rainbirdController_hash, $message )
 #####################################
 sub RainbirdZone_Parse($$)
 {
@@ -486,28 +591,29 @@ sub RainbirdZone_Parse($$)
 }
 
 #####################################
-# ProcessMessage( $hash, $json_message )
+# RainbirdZone_ProcessMessage( $hash, $json_message )
 #####################################
 sub RainbirdZone_ProcessMessage($$)
 {
   my ( $hash, $json_message ) = @_;
   my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
 
   return
     if ( IsDisabled($name) );
 
-  Log3 $name, 5, "RainbirdZone ($name) - ProcessMessage was called";
+  Log3 $name, 5, "RainbirdZone ($name) - ProcessMessage[$zoneId] was called";
   
   if( not defined($json_message) )
   {
-    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage json_message undefined";
+    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage[$zoneId] json_message undefined";
     return;
   }
   
   my $type = $json_message->{"type"};
   if( not defined($type) )
   {
-    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage response undefined";
+    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage[$zoneId] response undefined";
     return;
   }
   
@@ -558,19 +664,20 @@ sub RainbirdZone_ProcessMessage($$)
 
   else
   {
-    Log3 $name, 4, "RainbirdZone ($name) - ProcessMessage response not handled";
+    Log3 $name, 4, "RainbirdZone ($name) - ProcessMessage[$zoneId] response not handled";
   }
 }
 
 #####################################
-# UpdateState( $hash )
+# RainbirdZone_UpdateState( $hash )
 #####################################
 sub RainbirdZone_UpdateState($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - UpdateState was called";
+  Log3 $name, 5, "RainbirdZone ($name) - UpdateState[$zoneId] was called";
   
   RainbirdZone_UpdateZoneActive($hash);
   RainbirdZone_UpdateZoneAvailable($hash);
@@ -578,18 +685,19 @@ sub RainbirdZone_UpdateState($)
 }
 
 #####################################
-# UpdateZoneActive( $hash )
+# RainbirdZone_UpdateZoneActive( $hash )
 #####################################
 sub RainbirdZone_UpdateZoneActive($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
-
-  Log3 $name, 5, "RainbirdZone ($name) - GetZoneActive was called";
+  my $zoneId = $hash->{ZONEID};
+  my $mask = $hash->{ZONEMASK};
 
   my $activeZoneMask = $hash->{IODev}->{ZONEACTIVEMASK};
-  my $mask = $hash->{ZONEMASK};
   my $result = $mask & $activeZoneMask;
+
+  Log3 $name, 5, "RainbirdZone ($name) - UpdateZoneActive[$zoneId] was called";
 
   my $activeZoneSecondsLeft = $hash->{IODev}->{ZONEACTIVESECONDSLEFT};
   $activeZoneSecondsLeft = 0 if(!defined($activeZoneSecondsLeft));
@@ -618,20 +726,19 @@ sub RainbirdZone_UpdateZoneActive($)
 }
 
 #####################################
-# UpdateZoneAvailable( $hash )
+# RainbirdZone_UpdateZoneAvailable( $hash )
 #####################################
 sub RainbirdZone_UpdateZoneAvailable($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
-
-  Log3 $name, 5, "RainbirdZone ($name) - GetZoneAvailable was called";
+  my $zoneId = $hash->{ZONEID};
+  my $mask = $hash->{ZONEMASK};
 
   my $availableZoneMask = $hash->{IODev}->{ZONESAVAILABLEMASK}; 
-  my $mask = $hash->{ZONEMASK};
   my $result = $mask & $availableZoneMask;
 
-  Log3 $name, 5, "RainbirdZone ($name) - GetZoneAvailable $availableZoneMask $result";
+  Log3 $name, 5, "RainbirdZone ($name) - UpdateZoneAvailable[$zoneId] $availableZoneMask $result";
   
   readingsBeginUpdate($hash);
   
@@ -657,19 +764,65 @@ sub RainbirdZone_UpdateZoneAvailable($)
 }
 
 #####################################
-# UpdateSchedule( $hash )
+# RainbirdZone_Irrigate( $hash, $minutes )
+#####################################
+sub RainbirdZone_Irrigate($$)
+{
+  my ( $hash, $minutes ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+  
+  Log3 $name, 5, "RainbirdZone ($name) - Irrigate[$zoneId] was called";
+
+  # send command via RainbirdController
+  IOWrite( $hash, "IrrigateZone", $zoneId, $minutes );
+}
+
+#####################################
+# RainbirdZone_Stop( $hash )
+#####################################
+sub RainbirdZone_Stop($)
+{
+  my ( $hash, $minutes ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+  
+  Log3 $name, 5, "RainbirdZone ($name) - Stop[$zoneId] was called";
+
+  # send command via RainbirdController
+  IOWrite( $hash, "Stop" );
+}
+
+#####################################
+# RainbirdZone_GetSchedule( $hash )
+#####################################
+sub RainbirdZone_GetSchedule($)
+{
+  my ( $hash ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+  
+  Log3 $name, 5, "RainbirdZone ($name) - GetSchedule[$zoneId] was called";
+
+  # send command via RainbirdController
+  IOWrite( $hash, "ZoneGetSchedule", $zoneId);
+}
+
+#####################################
+# RainbirdZone_UpdateSchedule( $hash )
 #####################################
 sub RainbirdZone_UpdateSchedule($)
 {
   my ( $hash ) = @_;
   my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - GetSchedule was called";
+  Log3 $name, 5, "RainbirdZone ($name) - UpdateSchedule[$zoneId] was called";
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
   {
-    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $hash->{ZONEID}}{'Schedule'}; 
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
 
     if(defined($zoneSchedule))
     {
@@ -678,16 +831,16 @@ sub RainbirdZone_UpdateSchedule($)
       
       readingsBeginUpdate($hash);
 
-      readingsBulkUpdate( $hash, 'scheduletimespan', $zoneSchedule->{"timespan"}, 1 ) if( defined( $zoneSchedule->{"timespan"} ));
-      readingsBulkUpdate( $hash, 'scheduletimer1', $zoneSchedule->{"timer1"}, 1 ) if( defined( $zoneSchedule->{"timer1"} ));
-      readingsBulkUpdate( $hash, 'scheduletimer2', $zoneSchedule->{"timer2"}, 1 ) if( defined( $zoneSchedule->{"timer2"} ));
-      readingsBulkUpdate( $hash, 'scheduletimer3', $zoneSchedule->{"timer3"}, 1 ) if( defined( $zoneSchedule->{"timer3"} ));
-      readingsBulkUpdate( $hash, 'scheduletimer4', $zoneSchedule->{"timer4"}, 1 ) if( defined( $zoneSchedule->{"timer4"} ));
-      readingsBulkUpdate( $hash, 'scheduletimer5', $zoneSchedule->{"timer5"}, 1 ) if( defined( $zoneSchedule->{"timer5"} ));
-      readingsBulkUpdate( $hash, 'schedulemode', $zoneSchedule->{"mode"}, 1 ) if( defined( $zoneSchedule->{"mode"} ));
-      readingsBulkUpdate( $hash, 'scheduleweekday', $zoneSchedule->{"weekday"}, 1 ) if( defined( $zoneSchedule->{"weekday"} ));
-      readingsBulkUpdate( $hash, 'scheduleinterval', $zoneSchedule->{"interval"}, 1 ) if( defined( $zoneSchedule->{"interval"} ));
-      readingsBulkUpdate( $hash, 'scheduleintervaldaysleft', $zoneSchedule->{"intervaldaysleft"}, 1 ) if( defined( $zoneSchedule->{"intervaldaysleft"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimespan', $zoneSchedule->{"timespan"}, 1 ) if( defined( $zoneSchedule->{"timespan"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimer1', $zoneSchedule->{"timer1"}, 1 ) if( defined( $zoneSchedule->{"timer1"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimer2', $zoneSchedule->{"timer2"}, 1 ) if( defined( $zoneSchedule->{"timer2"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimer3', $zoneSchedule->{"timer3"}, 1 ) if( defined( $zoneSchedule->{"timer3"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimer4', $zoneSchedule->{"timer4"}, 1 ) if( defined( $zoneSchedule->{"timer4"} ));
+      readingsBulkUpdate( $hash, 'ScheduleTimer5', $zoneSchedule->{"timer5"}, 1 ) if( defined( $zoneSchedule->{"timer5"} ));
+      readingsBulkUpdate( $hash, 'ScheduleMode', $zoneSchedule->{"mode"}, 1 ) if( defined( $zoneSchedule->{"mode"} ));
+      readingsBulkUpdate( $hash, 'ScheduleWeekday', $zoneSchedule->{"weekday"}, 1 ) if( defined( $zoneSchedule->{"weekday"} ));
+      readingsBulkUpdate( $hash, 'ScheduleDayInterval', $zoneSchedule->{"interval"}, 1 ) if( defined( $zoneSchedule->{"interval"} ));
+      readingsBulkUpdate( $hash, 'ScheduleDayIntervalOffset', $zoneSchedule->{"intervaldaysleft"}, 1 ) if( defined( $zoneSchedule->{"intervaldaysleft"} ));
 
       readingsEndUpdate( $hash, 1 );
     }
@@ -695,7 +848,320 @@ sub RainbirdZone_UpdateSchedule($)
 }
 
 #####################################
-# GetZoneMask( $hash )
+# RainbirdZone_SetSchedule( $hash )
+#####################################
+sub RainbirdZone_SetSchedule($)
+{
+  my ( $hash ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetSchedule[$zoneId] was called";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleMode( $hash, $modeValue )
+#####################################
+sub RainbirdZone_SetScheduleMode($$)
+{
+  my ( $hash, $modeValue ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleMode[$zoneId] was called";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+      	### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+      	
+      	substr($rawValue, 18, 2) = $modeValue;
+      	
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleTimer($hash, $timespan)
+#####################################
+sub RainbirdZone_SetScheduleTimer($$$)
+{
+  my ( $hash, $timerNumber, $timeString ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleTimer[$zoneId] was called";
+
+  ### off-value is "24:00"
+  if(lc $timeString eq "off")
+  {
+  	$timeString = "24:00";
+  }
+  
+  ### convert string in a multiple of 10 minutes
+  my @time = split(":", $timeString);
+  my $hours = $time[0];
+  my $minutes = $time[1];
+  my $value10Minutes = int(($hours * 60 + $minutes) / 10);
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+        
+        substr($rawValue, 4 + $timerNumber * 2, 2) = sprintf("%02X", $value10Minutes);
+        
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleTimespan($hash, $timespan)
+#####################################
+sub RainbirdZone_SetScheduleTimespan($$)
+{
+  my ( $hash, $timespan ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleTimespan[$zoneId] was called";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+        
+        substr($rawValue, 4, 2) = sprintf("%02X", $timespan);
+        
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleWeekday($hash, $weekdayList)
+#####################################
+sub RainbirdZone_SetScheduleWeekday($$)
+{
+  my ( $hash, $weekdayList ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleWeekday[$zoneId] was called \"$weekdayList\"";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+
+        my $weekdays = 0;
+
+        my @spl = split(',', $weekdayList); 
+        foreach my $day (@spl)  
+        {
+          if(lc $day eq "mon")
+          {
+            $weekdays |= 2;
+          }
+          elsif(lc $day eq "tue")
+          {
+            $weekdays |= 4;
+          }
+          elsif(lc $day eq "wed")
+          {
+            $weekdays |= 8;
+          }
+          elsif(lc $day eq "thu")
+          {
+            $weekdays |= 16;
+          }
+          elsif(lc $day eq "fri")
+          {
+            $weekdays |= 32;
+          }
+          elsif(lc $day eq "sat")
+          {
+            $weekdays |= 64;
+          }
+          elsif(lc $day eq "sun")
+          {
+            $weekdays |= 1;
+          }
+        } 
+        
+    Log3 $name, 5, "RainbirdZone ($name) - SetScheduleWeekday[$zoneId] was called \"$weekdays\"";
+  
+        substr($rawValue, 20, 2) = sprintf("%02X", $weekdays);
+        
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleDayInterval($hash, $intervalDays)
+#####################################
+sub RainbirdZone_SetScheduleDayInterval($$)
+{
+  my ( $hash, $intervalDays ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleDayInterval[$zoneId] was called";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+        my $intervalDaysOffset = int(substr($rawValue, 24, 2));
+        
+        if($intervalDaysOffset >= $intervalDays)
+        {
+          $intervalDaysOffset = 0;
+        }
+        
+        substr($rawValue, 22, 2) = sprintf("%02X", $intervalDays);
+        substr($rawValue, 24, 2) = sprintf("%02X", $intervalDaysOffset);
+        
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_SetScheduleDayIntervalOffset($hash, $intervalDaysOffset)
+#####################################
+sub RainbirdZone_SetScheduleDayIntervalOffset($$)
+{
+  my ( $hash, $intervalDaysOffset ) = @_;
+  my $name = $hash->{NAME};
+  my $zoneId = $hash->{ZONEID};
+
+  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleDayIntervalOffset[$zoneId] was called";
+
+  if(defined($hash->{IODev}) and
+    defined($hash->{IODev}{helper}))
+  {
+    ### get schedule raw-value from RainbirdController
+    my $zoneSchedule = $hash->{IODev}{helper}{'Zone' . $zoneId}{'Schedule'}; 
+
+    if(defined($zoneSchedule))
+    {
+      my $data = $zoneSchedule->{'data'};
+
+      if(defined($data) and
+        length($data) == 28)
+      {
+        ### cut cmd-value
+        my $rawValue = substr($data, 2, 26);
+        my $intervalDays = int(substr($rawValue, 22, 2));
+        
+        if($intervalDaysOffset >= $intervalDays)
+        {
+          $intervalDaysOffset = 0;
+        }
+        
+        substr($rawValue, 22, 2) = sprintf("%02X", $intervalDays);
+        substr($rawValue, 24, 2) = sprintf("%02X", $intervalDaysOffset);
+        
+        # send command via RainbirdController
+        IOWrite( $hash, "ZoneSetScheduleRAW", $rawValue);
+      }
+    }
+  }
+}
+
+#####################################
+# RainbirdZone_GetZoneMask( $hash )
 #####################################
 sub RainbirdZone_GetZoneMask($)
 {
@@ -736,10 +1202,59 @@ sub RainbirdZone_GetZoneMask($)
         Clears all readings.
       </li>
       <li><B>Irrigate [&lt;minutes&gt;]</B><a name="RainbirdZoneIrrigate"></a><br>
-        Starts irrigating the zone for [minutes] or attribute <b>irrigationTime</b>
+        Starts irrigating the zone for <b>[minutes]</b> or attribute <b>irrigationTime</b>.<br>
+        A Range from 0..100 minutes is valid.
+      </li>
+      <li><B>Schedule</B><a name="RainbirdZoneSchedule"></a><br>
+        (Re)Write the current schedule to the device und refresh readings.
+      </li>
+      <li><B>ScheduleDayInterval</B><a name="RainbirdZoneScheduleDayInterval"></a><br>
+        Set the <b>DayInterval</b> [0..14] for <b>ScheduleMode</b> <b>cyclic</b>.<br>
+        Skip next <b>DayIntervalOffset</b> [0..13] days from today.
+      </li>
+      <li><B>ScheduleDayIntervalOffset</B><a name="RainbirdZoneScheduleDayIntervalOffset"></a><br>
+        Set the <b>DayInterval</b> [0..14] for <b>ScheduleMode</b> <b>cyclic</b>.<br>
+        Skip next <b>DayIntervalOffset</b> [0..13] days from today.
+      </li>
+      <li><B>ScheduleMode</B><a name="RainbirdZoneScheduleMode"></a><br>
+        Set the mode of the schedule.<br>
+        <ul>
+        <li><b>user</b> - irrigate each selected weekday(s)</li>
+        <li><b>odd</b> - irrigate each odd day</li>
+        <li><b>even</b> - irrigate each even day</li>
+        <li><b>cyclic</b> - irrigate each [DayInterval] day(s). Skip next [DayIntervalOffset] days from now on.</li>
+        </ul>
+      </li>
+      <li><B>ScheduleTimer1</B><a name="RainbirdZoneScheduleTimer1"></a><br>
+        Set the schedule for timer 1.<br>
+        Format is <b>HH:MM</b> or <b>off</b>
+      </li>
+      <li><B>ScheduleTimer2</B><a name="RainbirdZoneScheduleTimer2"></a><br>
+        Set the schedule for timer 2.<br>
+        Format is <b>HH:MM</b> or <b>off</b>
+      </li>
+      <li><B>ScheduleTimer3</B><a name="RainbirdZoneScheduleTimer3"></a><br>
+        Set the schedule for timer 3.<br>
+        Format is <b>HH:MM</b> or <b>off</b>
+      </li>
+      <li><B>ScheduleTimer4</B><a name="RainbirdZoneScheduleTimer4"></a><br>
+        Set the schedule for timer 4.<br>
+        Format is <b>HH:MM</b> or <b>off</b>
+      </li>
+      <li><B>ScheduleTimer5</B><a name="RainbirdZoneScheduleTimer5"></a><br>
+        Set the schedule for timer 5.<br>
+        Format is <b>HH:MM</b> or <b>off</b>
+      </li>
+      <li><B>ScheduleTimespan</B><a name="RainbirdZoneScheduleTimespan"></a><br>
+        Set the timespan of the scheduled irrigation in minutes.<br>
+        A Range from 1..199 is valid.
+      </li>
+      <li><B>ScheduleWeekday</B><a name="RainbirdZoneScheduleWeekday"></a><br>
+        Set the weekday(s) for [ScheduleMode] <b>user</b>.<br>
+        Format is <b>Mon,Tue,Wed,Thu,Fri,Sat,Sun</b>
       </li>
       <li><B>Stop</B><a name="RainbirdZoneStop"></a><br>
-        Stops irrigating the zone.
+        Stop irrigating all zones.
       </li>
     </ul><br>
     <a name="RainbirdZoneget"></a><b>Get</b>

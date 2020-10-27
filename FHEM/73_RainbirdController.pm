@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.8.2';
+my $VERSION = '1.8.3';
 my $DefaultInterval = 60;       # default value for the polling interval in seconds
 my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
 my $DefaultTimeout = 5;         # default value for response timeout in seconds
@@ -506,7 +506,7 @@ my %ControllerResponses = (
     "timer4"           => {"position" => 14, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes}, 
     "timer5"           => {"position" => 16, "length" => 2, "knownvalues" => {"24:00" => "off"}, "converter" => \&RainbirdController_GetTimeFrom10Minutes},
     "param1"           => {"position" => 18, "length" => 2, "knownvalues" => {"144" => "off"}}, 
-    "mode"             => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user defined", "1" => "odd", "2" => "even", "3" => "zyclic"}}, 
+    "mode"             => {"position" => 20, "length" => 2, "knownvalues" => {"0" => "user", "1" => "odd", "2" => "even", "3" => "cyclic"}}, 
     "weekday"          => {"position" => 22, "length" => 2, "converter" => \&RainbirdController_GetWeekdaysFromBitmask}, 
     "interval"         => {"position" => 24, "length" => 2}, 
     "intervaldaysleft" => {"position" => 26, "length" => 2} } },
@@ -988,7 +988,7 @@ sub RainbirdController_Set($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_StopIrrigation($hash);
+    return RainbirdController_StopIrrigation($hash);
   } 
   
   ### IrrigateZone
@@ -1003,7 +1003,7 @@ sub RainbirdController_Set($@)
     my $zone = $args[0];
     my $minutes = $args[1];
     
-    RainbirdController_ZoneIrrigate($hash, $zone, $minutes);
+    return RainbirdController_ZoneIrrigate($hash, $zone, $minutes);
   } 
 
   ### RainDelay
@@ -1017,7 +1017,7 @@ sub RainbirdController_Set($@)
 
     my $days = $args[0];
     
-    RainbirdController_SetRainDelay($hash, $days);
+    return RainbirdController_SetRainDelay($hash, $days);
   } 
 
   ### RainSensorBypass
@@ -1031,7 +1031,7 @@ sub RainbirdController_Set($@)
 
     my $onoff = lc $args[0];
     
-    RainbirdController_SetRainSensorBypass($hash, $onoff);
+    return RainbirdController_SetRainSensorBypass($hash, $onoff);
   } 
 
   ### SynchronizeDateTime
@@ -1049,11 +1049,12 @@ sub RainbirdController_Set($@)
     {
       RainbirdController_SetCurrentDate($hash, $year + 1900, $mon + 1, $mday); 
     };
-    RainbirdController_SetCurrentTime($hash, $hour, $min, $sec, $callback);
+    
+    return RainbirdController_SetCurrentTime($hash, $hour, $min, $sec, $callback);
   } 
 
-  ### Time
-  elsif ( lc $cmd eq lc 'Time' )
+  ### InternalTime
+  elsif ( lc $cmd eq lc 'InternalTime' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -1068,11 +1069,11 @@ sub RainbirdController_Set($@)
       return $msg;
     }    
     
-    RainbirdController_SetCurrentTime($hash, $hour, $min, $sec);
+    return RainbirdController_SetCurrentTime($hash, $hour, $min, $sec);
   } 
 
-  ### Date
-  elsif ( lc $cmd eq lc 'Date' )
+  ### InternalDate
+  elsif ( lc $cmd eq lc 'InternalDate' )
   {
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
@@ -1087,7 +1088,7 @@ sub RainbirdController_Set($@)
       return $msg;
     }    
     
-    RainbirdController_SetCurrentDate($hash, $year, $month, $day);
+    return RainbirdController_SetCurrentDate($hash, $year, $month, $day);
   } 
 
   ### Update
@@ -1096,7 +1097,7 @@ sub RainbirdController_Set($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetDeviceState($hash);
+    return RainbirdController_GetDeviceState($hash);
   } 
 
   ### FactoryReset
@@ -1105,7 +1106,7 @@ sub RainbirdController_Set($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_FactoryRsete($hash);
+    return RainbirdController_FactoryRsete($hash);
   } 
 
   ### TestCMD
@@ -1121,7 +1122,7 @@ sub RainbirdController_Set($@)
     ### others are parameters
     my $command = shift(@args);
     
-    RainbirdController_TestCMD($hash, $command, \@args);
+    return RainbirdController_TestCMD($hash, $command, \@args);
   } 
 
   ### TestRAW
@@ -1135,7 +1136,7 @@ sub RainbirdController_Set($@)
 
     my $rawHexString = $args[0];
     
-    RainbirdController_TestRAW($hash, $rawHexString);
+    return RainbirdController_TestRAW($hash, $rawHexString);
   } 
 
   ### ZoneGetSchedule
@@ -1148,7 +1149,7 @@ sub RainbirdController_Set($@)
       if ( @args != 1 );
     
     my $zone = $args[0];
-    RainbirdController_ZoneGetSchedule($hash, $zone);
+    return RainbirdController_ZoneGetSchedule($hash, $zone);
   } 
   
   ### ZoneSetScheduleRAW
@@ -1161,7 +1162,7 @@ sub RainbirdController_Set($@)
       if ( @args != 1 );
     
     my $rawValue = $args[0];
-    RainbirdController_ZoneSetScheduleRAW($hash, $rawValue);
+    return RainbirdController_ZoneSetScheduleRAW($hash, $rawValue);
   } 
 
   ### ClearReadings
@@ -1180,19 +1181,27 @@ sub RainbirdController_Set($@)
     if ( defined( RainbirdController_ReadPassword($hash) ))
     {
       $list .= " ClearReadings:noArg";
-      $list .= " Date";
       $list .= " DeletePassword:noArg";
-      $list .= " RainDelay";
+      $list .= " InternalDate";
+      $list .= " InternalTime:time";
+      $list .= " RainDelay:slider,0,1,14";
       $list .= " RainSensorBypass:on,off";
       $list .= " Stop:noArg";
       $list .= " SynchronizeDateTime:noArg";
-      $list .= " Time";
       $list .= " Update:noArg";
       ### expert mode:
-      $list .= " IrrigateZone" if($hash->{EXPERTMODE});
+      if($hash->{ZONESAVAILABLECOUNT} > 0)
+      {
+        $list .= " IrrigateZone:" . join(",", (1..($hash->{ZONESAVAILABLECOUNT}))) if($hash->{EXPERTMODE});
+      }
+      else
+      {
+        $list .= " IrrigateZone" if($hash->{EXPERTMODE});
+      }
       $list .= " FactoryReset:noArg" if($hash->{EXPERTMODE});
       $list .= " TestCMD" if($hash->{EXPERTMODE});
       $list .= " TestRAW" if($hash->{EXPERTMODE});
+      # $list .= " ZoneGetSchedule" if($hash->{EXPERTMODE}); # don't show
       $list .= " ZoneSetScheduleRAW" if($hash->{EXPERTMODE});
     }
     else
@@ -1219,7 +1228,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetDeviceState($hash);
+    return RainbirdController_GetDeviceState($hash);
   } 
   
   ### WifiParams
@@ -1228,7 +1237,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetWifiParams($hash);
+    return RainbirdController_GetWifiParams($hash);
   } 
   
   ### NetworStatus
@@ -1237,7 +1246,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetNetworkStatus($hash);
+    return RainbirdController_GetNetworkStatus($hash);
   } 
   
   ### Settings
@@ -1246,7 +1255,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetSettings($hash);
+    return RainbirdController_GetSettings($hash);
   } 
   
   ### ModelAndVersion
@@ -1255,7 +1264,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetModelAndVersion($hash);
+    return RainbirdController_GetModelAndVersion($hash);
   } 
   
   ### AvailableZones
@@ -1264,7 +1273,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetAvailableZones($hash);
+    return RainbirdController_GetAvailableZones($hash);
   } 
   
   ### SerialNumber
@@ -1273,7 +1282,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetSerialNumber($hash);
+    return RainbirdController_GetSerialNumber($hash);
   } 
   
   ### Time
@@ -1282,7 +1291,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetCurrentTime($hash);
+    return RainbirdController_GetCurrentTime($hash);
   } 
   
   ### Date
@@ -1291,7 +1300,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetCurrentDate($hash);
+    return RainbirdController_GetCurrentDate($hash);
   } 
   
   ### RainSensorBypass
@@ -1300,7 +1309,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetRainSensorBypass($hash);
+    return RainbirdController_GetRainSensorBypass($hash);
   } 
   
   ### RainSensorState
@@ -1309,7 +1318,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetRainSensorState($hash);
+    return RainbirdController_GetRainSensorState($hash);
   } 
   
   ### RainDelay
@@ -1318,7 +1327,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetRainDelay($hash);
+    return RainbirdController_GetRainDelay($hash);
   } 
   
   ### CurrentIrrigation
@@ -1327,7 +1336,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetCurrentIrrigation($hash);
+    return RainbirdController_GetCurrentIrrigation($hash);
   } 
   
   ### IrrigationState
@@ -1336,7 +1345,7 @@ sub RainbirdController_Get($@)
     return "please set password first"
       if ( not defined( RainbirdController_ReadPassword($hash) ) );
     
-    RainbirdController_GetActiveStation($hash);
+    return RainbirdController_GetActiveStation($hash);
   } 
   
   ### ZoneSchedule
@@ -1349,7 +1358,7 @@ sub RainbirdController_Get($@)
       if ( @args != 1 );
     
     my $zone = $args[0];
-    RainbirdController_ZoneGetSchedule($hash, $zone);
+    return RainbirdController_ZoneGetSchedule($hash, $zone);
   } 
   
   ### CommandSupport
@@ -1362,7 +1371,7 @@ sub RainbirdController_Get($@)
       if ( @args != 1 );
 
     my $command = $args[0];
-    RainbirdController_GetCommandSupport($hash, $command);
+    return RainbirdController_GetCommandSupport($hash, $command);
   } 
   
   ### DecryptHEX
@@ -1952,7 +1961,7 @@ sub RainbirdController_GetCurrentTime($;$)
         defined($result->{"minute"}) and
         defined($result->{"second"}) )
       {
-        readingsBulkUpdate( $hash, 'currentTime', sprintf("%02s:%02s:%02s", $result->{"hour"}, $result->{"minute"}, $result->{"second"}), 1 );
+        readingsBulkUpdate( $hash, 'InternalTime', sprintf("%02s:%02s:%02s", $result->{"hour"}, $result->{"minute"}, $result->{"second"}), 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2031,7 +2040,7 @@ sub RainbirdController_GetCurrentDate($;$)
         defined($result->{"month"}) and
         defined($result->{"day"}) )
       {
-        readingsBulkUpdate( $hash, 'currentDate', sprintf("%04s-%02s-%02s", $result->{"year"}, $result->{"month"}, $result->{"day"}), 1 );
+        readingsBulkUpdate( $hash, 'InternalDate', sprintf("%04s-%02s-%02s", $result->{"year"}, $result->{"month"}, $result->{"day"}), 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2110,7 +2119,7 @@ sub RainbirdController_GetCurrentIrrigation($;$)
 
       if( defined($result->{"irrigationState"}))
       {
-        readingsBulkUpdate( $hash, 'irrigationState', $result->{"irrigationState"}, 1 );
+        readingsBulkUpdate( $hash, 'IrrigationState', $result->{"irrigationState"}, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2242,7 +2251,7 @@ sub RainbirdController_GetIrrigationState($;$)
         $hash->{ZONEACTIVE} = $zoneActive;
         $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
-        readingsBulkUpdate( $hash, 'zoneActive', $zoneActive);
+        readingsBulkUpdate( $hash, 'ZoneActive', $zoneActive);
 
         if( $zoneActive == 0 )
         {
@@ -2259,7 +2268,7 @@ sub RainbirdController_GetIrrigationState($;$)
         my $secondsLeft = $result->{"secondsLeft"};
         $hash->{ZONEACTIVESECONDSLEFT} = $secondsLeft;
         
-        readingsBulkUpdate( $hash, 'irrigationSecondsLeft', $secondsLeft, 1 );
+        readingsBulkUpdate( $hash, 'IrrigationSecondsLeft', $secondsLeft, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2318,7 +2327,7 @@ sub RainbirdController_GetRainDelay($;$)
 
       if( defined($result->{"delaySetting"}) )
       {
-        readingsBulkUpdate( $hash, 'rainDelay', $result->{"delaySetting"}, 1 );
+        readingsBulkUpdate( $hash, 'RainDelay', $result->{"delaySetting"}, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2346,8 +2355,22 @@ sub RainbirdController_SetRainDelay($$;$)
   
   my $command = "RainDelaySet";
     
-  Log3 $name, 4, "RainbirdController ($name) - SetRainDelay";
+  Log3 $name, 4, "RainbirdController ($name) - SetRainDelay for $days days";
     
+  ## check parameter
+  if( not defined($days) )
+  {
+  	return "parameter \"days\" not set!";
+  }
+  elsif($days < 0)
+  {
+  	return "parameter \"days\" must not be smaller than zero days!";
+  }
+  elsif($days > 20)
+  {
+    return "parameter \"days\" must not be greater than 14 days!";
+  }
+  
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
@@ -2395,7 +2418,7 @@ sub RainbirdController_GetRainSensorState($;$)
 
       if( defined($result->{"sensorState"}) )
       {
-        readingsBulkUpdate( $hash, 'rainSensorState', $result->{"sensorState"}, 1 );
+        readingsBulkUpdate( $hash, 'RainSensorState', $result->{"sensorState"}, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -2439,7 +2462,7 @@ sub RainbirdController_GetRainSensorBypass($;$)
 
       if( defined($result->{"bypass"}) )
       {
-        readingsBulkUpdate( $hash, 'rainSensorBypass', $result->{"bypass"}, 1 );
+        readingsBulkUpdate( $hash, 'RainSensorBypass', $result->{"bypass"}, 1 );
       }
 
       readingsEndUpdate( $hash, 1 );
@@ -4133,16 +4156,24 @@ sub RainbirdController_GetWeekdaysFromBitmask($)
   
   my $result = "";
 
-  $result .= " Mon" if($mask &  2);
-  $result .= " Tue" if($mask &  4);
-  $result .= " Wed" if($mask &  8);
-  $result .= " Thu" if($mask & 16);
-  $result .= " Fri" if($mask & 32);
-  $result .= " Sat" if($mask & 64);
-  $result .= " Sun" if($mask &  1);
-
-  # left trim
-  $result =~ s/^\s+//;
+  if($mask == 0)
+  {
+  	$result = "none"
+  }
+  else
+  {
+    $result .= "Mon," if($mask &  2);
+    $result .= "Tue," if($mask &  4);
+    $result .= "Wed," if($mask &  8);
+    $result .= "Thu," if($mask & 16);
+    $result .= "Fri," if($mask & 32);
+    $result .= "Sat," if($mask & 64);
+    $result .= "Sun," if($mask &  1);
+  }
+  
+  # cutoff last ","
+  my $len = length($result);
+  $result = substr($result, 0, $len - 1); 
   return $result;
 }
 
@@ -4198,15 +4229,19 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       <li><B>ClearReadings</B><a name="RainbirdControllerClearReadings"></a><br>
         Clears all readings.
       </li>
-      <li><B>Date</B><a name="RainbirdControllerDate"></a><br>
-        Sets the internal date of the controller.<br>
-        Format: YYYY-MM-DD
-      </li>
       <li><B>DeletePassword</B><a name="RainbirdControllerDeletePassword"></a><br>
         Deletes the password from store.
       </li>
       <li><B>FactoryReset</B><a name="RainbirdControllerFactoryReset"></a><br>
         Reset all parameters of the device to default factory settings.
+      </li>
+      <li><B>InternalDate</B><a name="RainbirdControllerInternalDate"></a><br>
+        Set the internal date of the controller.<br>
+        Format: <b>YYYY-MM-DD</b>
+      </li>
+      <li><B>InternalTime</B><a name="RainbirdControllerInternalTime"></a><br>
+        Set the internal time of the controller<br>
+        Format: <b>HH:MM</b> or <b>HH:MM:SS</b>
       </li>
       <li><B>IrrigateZone</B><a name="RainbirdControllerIrrigateZone"></a><br>
         Starts irrigating a zone.
@@ -4231,10 +4266,6 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       </li>
       <li><B>TestRAW</B><a name="RainbirdControllerTestRAW"></a><br>
         Tests a raw command
-      </li>
-      <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
-        Sets the internal time of the controller<br>
-        Format: HH:MM or HH:MM:SS
       </li>
       <li><B>Update</B><a name="RainbirdControllerUpdate"></a><br>
         Updates the device info and state.
