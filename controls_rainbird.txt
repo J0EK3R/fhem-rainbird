@@ -1,2 +1,2 @@
-UPD 2020-10-27_04:08:20 139285  FHEM/73_RainbirdController.pm
-UPD 2020-10-27_04:08:20 38881   FHEM/74_RainbirdZone.pm
+UPD 2021-06-03_05:06:38 141443  FHEM/73_RainbirdController.pm
+UPD 2021-06-03_05:06:38 40373   FHEM/74_RainbirdZone.pm

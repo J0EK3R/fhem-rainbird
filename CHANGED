@@ -1,3 +1,8 @@
 FHEM Rainbird last changes:
-2020-10-27
- - v1.8.3 get and set zone-schedules
+2021-06-03
+ - version 1.9.0
+
+version 1.9.0
+* new reading "Zone::Irrigate" for to enable slider
+* bugfixes
+* more help
