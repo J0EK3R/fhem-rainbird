@@ -41,7 +41,7 @@ eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
 
 ### statics
-my $VERSION = '1.8.3';
+my $VERSION = '1.9.0';
 my $DefaultInterval = 60;       # default value for the polling interval in seconds
 my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
 my $DefaultTimeout = 5;         # default value for response timeout in seconds
@@ -2169,7 +2169,7 @@ sub RainbirdController_GetActiveStation($;$)
         $hash->{ZONEACTIVE} = $zoneActive;
         $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
-        readingsBulkUpdate( $hash, 'zoneActive', $zoneActive);
+        readingsBulkUpdate( $hash, 'ZoneActive', $zoneActive);
 
         if( $zoneActive == 0 )
         {
@@ -4351,6 +4351,84 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       </li>
       <li><a name="RainbirdControllertimeout">timeout</a><br>
         Timeout for expected response in seconds (Default=20)<br>
+      </li>
+    </ul><br>
+    <a name="RainbirdControllerreadings"></a><b>Readings</b>
+    <ul>
+      <li><B>InternalDate</B><br>
+        Internal date of the device.<br>
+      </li>
+      <li><B>InternalTime</B><br>
+        Internal time of the device.<br>
+      </li>
+      <li><B>InternetUp</B><br>
+        1 if connected to the internet else 0.<br>
+      </li>
+      <li><B>IrrigationSecondsLeft</B><br>
+        Left irrigation timespan in seconds.<br>
+      </li>
+      <li><B>IrrigationState</B><br>
+        Irrigation state.<br>
+      </li>
+      <li><B>NetworkUp</B><br>
+        1 if network is up else 0.<br>
+      </li>
+      <li><B>RainDelay</B><br>
+        Delay of the schedules in days.<br>
+      </li>
+      <li><B>RainSensorBypass</B><br>
+        Enable (on) or disable (off) the bypass of the rain sensor.<br>
+      </li>
+      <li><B>RainSensorState</B><br>
+        State of the rain sensor.<br>
+      </li>
+      <li><B>SettingCode</B><br>
+        Zip-code of your city.<br>
+      </li>
+      <li><B>SettingCountry</B><br>
+        Country.<br>
+      </li>
+      <li><B>SettingGlobalDisable</B><br>
+        SettingGlobalDisable.<br>
+      </li>
+      <li><B>SettingNumPrograms</B><br>
+        SettingNumPrograms.<br>
+      </li>
+      <li><B>SettingProgramOptOutMask</B><br>
+        SettingProgramOptOutMask.<br>
+      </li>
+      <li><B>Wifi_ApTimeoutIdle</B><br>
+        Wifi_ApTimeoutIdle.<br>
+      </li>
+      <li><B>Wifi_ApTimeoutNoLan</B><br>
+        Wifi_ApTimeoutNoLan.<br>
+      </li>
+      <li><B>Wifi_Gateway</B><br>
+        Wifi_Gateway.<br>
+      </li>
+      <li><B>Wifi_IpAddress</B><br>
+        Wifi_IpAddress.<br>
+      </li>
+      <li><B>Wifi_MacAddress</B><br>
+        Wifi_MacAddress.<br>
+      </li>
+      <li><B>Wifi_Netmask</B><br>
+        Wifi_Netmask.<br>
+      </li>
+      <li><B>Wifi_Security</B><br>
+        Wifi_Security.<br>
+      </li>
+      <li><B>Wifi_StickVersion</B><br>
+        Wifi_StickVersion.<br>
+      </li>
+      <li><B>Wifi_rssi</B><br>
+        Wifi_rssi.<br>
+      </li>
+      <li><B>ZoneActive</B><br>
+        Number of active zone.<br>
+      </li>
+      <li><B>state</B><br>
+        State.<br>
       </li>
     </ul><br>
     <a name="RainbirdControllerinternals"></a><b>Internals</b>

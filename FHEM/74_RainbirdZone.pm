@@ -66,7 +66,7 @@ sub RainbirdZone_SetScheduleDayIntervalOffset($$);
 sub RainbirdZone_GetZoneMask($);
 
 ### statics
-my $VERSION = '1.8.3';
+my $VERSION = '1.9.0';
 
 my $DefaultIrrigationTime = 10; # default value for irrigate command without parameter in minutes
 
@@ -702,6 +702,8 @@ sub RainbirdZone_UpdateZoneActive($)
   my $activeZoneSecondsLeft = $hash->{IODev}->{ZONEACTIVESECONDSLEFT};
   $activeZoneSecondsLeft = 0 if(!defined($activeZoneSecondsLeft));
 
+  my $activeZoneMinutesLeft = $activeZoneSecondsLeft / 60;
+  
   readingsBeginUpdate($hash);
   
   if($result)
@@ -709,11 +711,13 @@ sub RainbirdZone_UpdateZoneActive($)
     readingsBulkUpdate( $hash, 'state', 'irrigating', 1 );
     readingsBulkUpdate( $hash, 'irrigating', 1, 1 );
     readingsBulkUpdate( $hash, 'irrigationSecondsLeft', $activeZoneSecondsLeft, 1 );
+    readingsBulkUpdate( $hash, 'Irrigate', $activeZoneMinutesLeft, 1 );
   }
   else
   {
     readingsBulkUpdate( $hash, 'irrigating', 0, 1 );
     readingsBulkUpdate( $hash, 'irrigationSecondsLeft', 0, 1 );
+    readingsBulkUpdate( $hash, 'Irrigate', 0, 1 );
     
     if($hash->{AVAILABLE} == 1)
     {
@@ -1275,7 +1279,52 @@ sub RainbirdZone_GetZoneMask($)
         Switches to expert mode.<br>
       </li>
     </ul><br>
-    <a name="RainbirdControllerinternals"></a><b>Internals</b>
+    <a name="RainbirdZonereadings"></a><b>Readings</b>
+    <ul>
+      <li><B>Irrigate</B><br>
+        Left irrigation timespan in minutes.<br>
+      </li>
+      <li><B>ScheduleDayInterval</B><br>
+        Interval of the schedule in days.<br>
+      </li>
+      <li><B>ScheduleDayIntervalOffset</B><br>
+        Offset of the schedule in days.<br>
+      </li>
+      <li><B>ScheduleMode</B><br>
+        Mode of the schedule<br>
+      </li>
+      <li><B>ScheduleTimer1</B><br>
+        1st Timer of schedule<br>
+      </li>
+      <li><B>ScheduleTimer2</B><br>
+        2nd Timer of schedule<br>
+      </li>
+      <li><B>ScheduleTimer3</B><br>
+        3rd Timer of schedule<br>
+      </li>
+      <li><B>ScheduleTimer4</B><br>
+        4th Timer of schedule<br>
+      </li>
+      <li><B>ScheduleTimer5</B><br>
+        5th Timer of schedule<br>
+      </li>
+      <li><B>ScheduleTimespan</B><br>
+        Timespan of schedule in minutes<br>
+      </li>
+      <li><B>ScheduleTimespan</B><br>
+        ScheduleWeekday(s) of schedule<br>
+      </li>
+      <li><B>irrigating</B><br>
+        irrigating (1) - not irrigating (0)<br>
+      </li>
+      <li><B>irrigationSecondsLeft</B><br>
+        Left irrigation timespan in seconds.<br>
+      </li>
+      <li><B>state</B><br>
+        State of the zone.<br>
+      </li>
+    </ul><br>
+    <a name="RainbirdZoneinternals"></a><b>Internals</b>
     <ul>
       <li><B>EXPERTMODE</B><br>
         gives information if device is in expert mode<br>
