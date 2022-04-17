@@ -1,12 +1,12 @@
 ###############################################################################
 #
-# Developed with eclipse
+# Developed with eclipse on windows os using fiddler to catch ip communication.
 #
 #  (c) 2020 Copyright: J.K. (J0EK3R at gmx dot net)
 #  All rights reserved
 #
-#   Special thanks goes to comitters:
-#
+#  Special thanks goes to committers:
+#  * me
 #
 #  This script is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -31,6 +31,8 @@
 ### our packagename
 package main;
 
+my $VERSION = '1.9.1';
+
 use strict;
 use warnings;
 
@@ -39,13 +41,6 @@ eval "use JSON;1" or $missingModul .= "JSON ";
 eval "use Digest::SHA qw(sha256);1" or $missingModul .= 'Digest::SHA ';
 eval "use Crypt::CBC;1" or $missingModul .= 'Crypt::CBC ';
 eval "use Crypt::Mode::CBC;1" or $missingModul .= 'Crypt::Mode::CBC ';
-
-### statics
-my $VERSION = '1.9.0';
-my $DefaultInterval = 60;       # default value for the polling interval in seconds
-my $DefaultRetryInterval = 60;  # default value for the retry interval in seconds
-my $DefaultTimeout = 5;         # default value for response timeout in seconds
-my $DefaultRetries = 3;         # default number of retrie 
 
 #####################################
 # Forward declarations
@@ -145,6 +140,12 @@ sub RainbirdController_GetTimeSpec($);
 sub RainbirdController_GetDateSpec($);
 sub RainbirdController_GetWeekdaysFromBitmask($);
 sub RainbirdController_GetTimeFrom10Minutes($);
+
+### constants
+my $DefaultInterval       = 60; # default value for the polling interval in seconds
+my $DefaultRetryInterval  = 60; # default value for the retry interval in seconds
+my $DefaultTimeout        = 5;  # default value for response timeout in seconds
+my $DefaultRetries        = 3;  # default number of retrie 
 
 ### hash with all known models
 my %KnownModels = (

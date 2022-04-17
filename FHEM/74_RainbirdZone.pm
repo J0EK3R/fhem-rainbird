@@ -1,12 +1,12 @@
 ###############################################################################
 #
-# Developed with eclipse
+# Developed with eclipse on windows os using fiddler to catch ip communication.
 #
-#  (c) 2019 Copyright: J.K. (J0EK3R at gmx dot net)
+#  (c) 2020 Copyright: J.K. (J0EK3R at gmx dot net)
 #  All rights reserved
 #
-#   Special thanks goes to comitters:
-#
+#  Special thanks goes to committers:
+#  * me
 #
 #  This script is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -30,6 +30,8 @@
 
 ### our packagename
 package main;
+
+my $VERSION = '1.9.1';
 
 use strict;
 use warnings;
@@ -65,9 +67,7 @@ sub RainbirdZone_SetScheduleDayIntervalOffset($$);
 ### internal tool functions
 sub RainbirdZone_GetZoneMask($);
 
-### statics
-my $VERSION = '1.9.0';
-
+### constants
 my $DefaultIrrigationTime = 10; # default value for irrigate command without parameter in minutes
 
 my %ScheduleModeTable = (
