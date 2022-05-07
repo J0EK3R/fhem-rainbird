@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.0";
+my $VERSION = "2.0.1";
 
 use strict;
 use warnings;
@@ -641,7 +641,7 @@ sub RainbirdController_Define($$)
   my $host = $a[2];
 
   ### Stop the current timer if one exists errornous 
-  RainbirdController_TimerStop($hash);
+  #RainbirdController_TimerStop($hash);
 
   ### some internal settings
   $hash->{VERSION}                          = $VERSION;
@@ -3504,8 +3504,8 @@ sub RainbirdController_Request($$$$$)
       $param->{header}              = $HEAD;
       $param->{data}                = $encrypt_data;
       $param->{timeout}             = $hash->{TIMEOUT};
-      $param->{keepalive}           = 0;
-      $param->{noshutdown}          = 0;
+#      $param->{keepalive}           = 0;
+#      $param->{noshutdown}          = 0;
 
       $param->{doTrigger}           = 1,
       $param->{callback}            = \&RainbirdController_ErrorHandling,

@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.0";
+my $VERSION = "2.0.1";
 
 use strict;
 use warnings;
