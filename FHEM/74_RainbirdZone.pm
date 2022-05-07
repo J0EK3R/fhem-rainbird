@@ -31,13 +31,13 @@
 ### our packagename
 package main;
 
-my $VERSION = '1.9.1';
+my $VERSION = "2.0.0";
 
 use strict;
 use warnings;
 
 my $missingModul = "";
-eval "use JSON;1" or $missingModul .= "JSON ";
+eval {use JSON;1 or $missingModul .= "JSON "};
 
 ### Forward declarations
 sub RainbirdZone_Initialize($);
@@ -85,23 +85,20 @@ sub RainbirdZone_Initialize($)
 {
   my ($hash) = @_;
 
-  # Provider
-
-  # Consumer
-  $hash->{SetFn}    = \&RainbirdZone_Set;
-  $hash->{GetFn}    = \&RainbirdZone_Get;
   $hash->{DefFn}    = \&RainbirdZone_Define;
   $hash->{UndefFn}  = \&RainbirdZone_Undef;
   $hash->{DeleteFn} = \&RainbirdZone_Delete;
-  $hash->{ParseFn}  = \&RainbirdZone_Parse;
-  $hash->{NotifyFn} = \&RainbirdZone_Notify;
   $hash->{AttrFn}   = \&RainbirdZone_Attr;
+  $hash->{NotifyFn} = \&RainbirdZone_Notify;
+  $hash->{SetFn}    = \&RainbirdZone_Set;
+  $hash->{GetFn}    = \&RainbirdZone_Get;
+  $hash->{ParseFn}  = \&RainbirdZone_Parse;
   
   $hash->{Match} = '"identifier":"Rainbird"'; # example {"response":"BF","pageNumber":0,"type":"CurrentStationsActiveResponse","identifier":"Rainbird","activeStations":0}
 
-  $hash->{AttrList} = "" . 
+  $hash->{AttrList} = 
     "IODev " . 
-    'expert:1,0 ' . 
+    "expert:1,0 " . 
     "disable:1 " . 
     "irrigationTime:10 " .
      $readingFnAttributes;
@@ -121,9 +118,9 @@ sub RainbirdZone_Define($$)
   my ( $hash, $def ) = @_;
   my @a = split( "[ \t]+", $def );
 
+  return 'Cannot define RainbirdZone device. Perl modul "' . ${missingModul} . '" is missing.' if ($missingModul);
   return 'too few parameters: define <NAME> RainbirdZone <zone_Id>' if ( @a < 3 );
   return 'too much parameters: define <NAME> RainbirdZone <zone_Id>' if ( @a > 3 );
-  return 'Cannot define RainbirdZone device. Perl modul "' . ${missingModul} . '" is missing.' if ($missingModul);
 
   my $name   = $a[0];
   #            $a[1] just contains the "RainbirdZone" module name and we already know that! :-)
@@ -138,7 +135,7 @@ sub RainbirdZone_Define($$)
   $hash->{EXPERTMODE}     = 0;
   
   ### ensure attribute IODev is present
-  CommandAttr( undef, $name . ' IODev ' . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
+  CommandAttr( undef, $name . " IODev " . $modules{RainbirdController}{defptr}{CONTROLLER}->{NAME} )
     if ( AttrVal( $name, 'IODev', 'none' ) eq 'none' );
 
   ### get IODev and assign Zone to IODev
@@ -149,11 +146,11 @@ sub RainbirdZone_Define($$)
 
   if ( defined( $hash->{IODev}->{NAME} ) )
   {
-    Log3 $name, 3, "RainbirdZone ($name) - I/O device is " . $hash->{IODev}->{NAME};
+    Log3($name, 3, "RainbirdZone_Define($name) - I/O device is " . $hash->{IODev}->{NAME});
   } 
   else
   {
-    Log3 $name, 1, "RainbirdZone ($name) - no I/O device";
+    Log3($name, 1, "RainbirdZone_Define($name) - no I/O device");
   }
 
   $iodev = $hash->{IODev}->{NAME};
@@ -194,7 +191,7 @@ sub RainbirdZone_Define($$)
   RainbirdZone_UpdateZoneAvailable($hash);
   RainbirdZone_UpdateZoneActive($hash);
 
-  Log3 $name, 3, "RainbirdZone ($name) - defined RainbirdZone with ZONEID: $zoneId";
+  Log3($name, 3, "RainbirdZone_Define($name) - defined RainbirdZone with ZONEID: $zoneId");
 
   return undef;
 }
@@ -231,7 +228,7 @@ sub RainbirdZone_Attr(@)
   my ( $cmd, $name, $attrName, $attrVal ) = @_;
   my $hash = $defs{$name};
 
-  Log3 $name, 4, "RainbirdZone ($name) - Attr was called";
+  Log3($name, 4, "RainbirdZone_Attr($name) - Attr was called");
 
   # Attribute "disable"
   if ( $attrName eq 'disable' )
@@ -239,12 +236,12 @@ sub RainbirdZone_Attr(@)
     if ( $cmd eq 'set' and $attrVal eq '1' )
     {
       readingsSingleUpdate( $hash, 'state', 'disabled', 1 );
-      Log3 $name, 3, "RainbirdZone ($name) - disabled";
+      Log3($name, 3, "RainbirdZone_Attr($name) - disabled");
     } 
     elsif ( $cmd eq 'del' )
     {
       readingsSingleUpdate( $hash, 'state', 'ready', 1 );
-      Log3 $name, 3, "RainbirdZone ($name) - enabled";
+      Log3($name, 3, "RainbirdZone_Attr($name) - enabled");
     }
   }
 
@@ -259,7 +256,7 @@ sub RainbirdZone_Attr(@)
     {
       $hash->{IRRIGATIONTIME} = $DefaultIrrigationTime;
     }
-    Log3 $name, 3, "RainbirdZone ($name) - set irrigationtime to " . $hash->{IRRIGATIONTIME} . " minutes";
+    Log3($name, 3, "RainbirdZone_Attr($name) - set irrigationtime to " . $hash->{IRRIGATIONTIME} . " minutes");
   }
 
    ### Attribute "expert"
@@ -270,12 +267,12 @@ sub RainbirdZone_Attr(@)
       if ($attrVal eq '1' )
       {
         $hash->{EXPERTMODE} = 1;
-        Log3 $name, 3, "RainbirdController ($name) - expert mode enabled";
+        Log3($name, 3, "RainbirdZone_Attr($name) - expert mode enabled");
       }
       elsif ($attrVal eq '0' )
       {
         $hash->{EXPERTMODE} = 0;
-        Log3 $name, 3, "RainbirdController ($name) - expert mode disabled";
+        Log3($name, 3, "RainbirdZone_Attr($name) - expert mode disabled");
       }
       else
       {
@@ -285,7 +282,7 @@ sub RainbirdZone_Attr(@)
     elsif ( $cmd eq 'del' )
     {
       $hash->{EXPERTMODE} = 0;
-      Log3 $name, 3, "RainbirdController ($name) - expert mode disabled";
+      Log3($name, 3, "RainbirdZone_Attr($name) - expert mode disabled");
     }
   }
 
@@ -310,7 +307,7 @@ sub RainbirdZone_Notify($$)
   return
     if ( !$events );
 
-  Log3 $name, 4, "RainbirdZone ($name) - Notify";
+  Log3($name, 4, "RainbirdZone_Notify($name) - Notify");
 
   return undef;
 }
@@ -323,7 +320,7 @@ sub RainbirdZone_Set($@)
   my ( $hash, $name, $cmd, @args ) = @_;
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 4, "RainbirdZone ($name) - Set was called: cmd= $cmd";
+  Log3($name, 4, "RainbirdZone_Set($name) - Set was called: cmd= $cmd");
 
   ### Stop
   if ( lc $cmd eq lc 'Stop' )
@@ -500,7 +497,7 @@ sub RainbirdZone_Get($@)
   my ( $hash, $name, $cmd, @args ) = @_;
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 4, "RainbirdZone ($name) - Get was called: cmd= $cmd";
+  Log3($name, 4, "RainbirdZone_Get($name) - Get was called: cmd= $cmd");
 
   ### Schedule
   if ( lc $cmd eq lc 'Schedule' )
@@ -530,14 +527,14 @@ sub RainbirdZone_Parse($$)
   my ( $rainbirdController_hash, $message ) = @_;
   my $rainbirdController_name = $rainbirdController_hash->{NAME};
 
-  Log3 $rainbirdController_name, 4, "RainbirdZone - Parse was called from $rainbirdController_name: \"$message\"";
+  Log3($rainbirdController_name, 4, "RainbirdZone_Parse($rainbirdController_name): \"$message\"");
 
   ### create structure from json string
   my $json_message = eval { decode_json($message) };
 
   if ($@)
   {
-    Log3 $rainbirdController_name, 2, "RainbirdZone - Parse: JSON error while request: $@";
+    Log3($rainbirdController_name, 2, "RainbirdZone_Parse($rainbirdController_name) - Parse: JSON error while request: $@");
     return;
   }
 
@@ -556,7 +553,7 @@ sub RainbirdZone_Parse($$)
       if( $zonesAvailableMask & $currentBit and
         not defined ($modules{RainbirdZone}{defptr}{$currentZoneId}) )
       {
-        Log3 $rainbirdController_name, 4, "RainbirdZone - RainbirdZone $currentZoneId not defined";
+        Log3($rainbirdController_name, 4, "RainbirdZone_Parse($rainbirdController_name) - RainbirdZone $currentZoneId not defined");
 
         my $rainbirdZone_name = 'RainbirdZone.' . sprintf("%02d", $currentZoneId);
         
@@ -570,7 +567,7 @@ sub RainbirdZone_Parse($$)
       while (my ($zoneId, $hash) = each (% {$modules{RainbirdZone}{defptr}}))
       {
         my $rainbirdZone_name = $hash->{NAME};
-        Log3 $rainbirdController_name, 5, "RainbirdZone - Parse found module: \"$rainbirdZone_name\"";
+        Log3($rainbirdController_name, 5, "RainbirdZone_Parse($rainbirdController_name) - Parse found module: \"$rainbirdZone_name\"");
       
         RainbirdZone_ProcessMessage($hash, $json_message);
         
@@ -584,7 +581,7 @@ sub RainbirdZone_Parse($$)
   }
   else
   {
-    Log3 $rainbirdController_name, 4, "RainbirdZone - Parse no Zones defined";
+    Log3($rainbirdController_name, 4, "RainbirdZone_Parse($rainbirdController_name) - Parse no Zones defined");
   }
   
   return;
@@ -602,18 +599,18 @@ sub RainbirdZone_ProcessMessage($$)
   return
     if ( IsDisabled($name) );
 
-  Log3 $name, 5, "RainbirdZone ($name) - ProcessMessage[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] was called");
   
   if( not defined($json_message) )
   {
-    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage[$zoneId] json_message undefined";
+    Log3($name, 3, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] json_message undefined");
     return;
   }
   
   my $type = $json_message->{"type"};
   if( not defined($type) )
   {
-    Log3 $name, 3, "RainbirdZone ($name) - ProcessMessage[$zoneId] response undefined";
+    Log3($name, 3, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] response undefined");
     return;
   }
   
@@ -664,7 +661,7 @@ sub RainbirdZone_ProcessMessage($$)
 
   else
   {
-    Log3 $name, 4, "RainbirdZone ($name) - ProcessMessage[$zoneId] response not handled";
+    Log3($name, 4, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] response not handled");
   }
 }
 
@@ -677,7 +674,7 @@ sub RainbirdZone_UpdateState($)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - UpdateState[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_UpdateState($name) - UpdateState[$zoneId] was called");
   
   RainbirdZone_UpdateZoneActive($hash);
   RainbirdZone_UpdateZoneAvailable($hash);
@@ -697,7 +694,7 @@ sub RainbirdZone_UpdateZoneActive($)
   my $activeZoneMask = $hash->{IODev}->{ZONEACTIVEMASK};
   my $result = $mask & $activeZoneMask;
 
-  Log3 $name, 5, "RainbirdZone ($name) - UpdateZoneActive[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_UpdateZoneActive($name) - UpdateZoneActive[$zoneId] was called");
 
   my $activeZoneSecondsLeft = $hash->{IODev}->{ZONEACTIVESECONDSLEFT};
   $activeZoneSecondsLeft = 0 if(!defined($activeZoneSecondsLeft));
@@ -742,7 +739,7 @@ sub RainbirdZone_UpdateZoneAvailable($)
   my $availableZoneMask = $hash->{IODev}->{ZONESAVAILABLEMASK}; 
   my $result = $mask & $availableZoneMask;
 
-  Log3 $name, 5, "RainbirdZone ($name) - UpdateZoneAvailable[$zoneId] $availableZoneMask $result";
+  Log3($name, 5, "RainbirdZone_UpdateZoneAvailable($name) - UpdateZoneAvailable[$zoneId] $availableZoneMask $result");
   
   readingsBeginUpdate($hash);
   
@@ -776,7 +773,7 @@ sub RainbirdZone_Irrigate($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
   
-  Log3 $name, 5, "RainbirdZone ($name) - Irrigate[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_Irrigate($name) - Irrigate[$zoneId] was called");
 
   # send command via RainbirdController
   IOWrite( $hash, "IrrigateZone", $zoneId, $minutes );
@@ -791,7 +788,7 @@ sub RainbirdZone_Stop($)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
   
-  Log3 $name, 5, "RainbirdZone ($name) - Stop[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_Stop($name) - Stop[$zoneId] was called");
 
   # send command via RainbirdController
   IOWrite( $hash, "Stop" );
@@ -806,7 +803,7 @@ sub RainbirdZone_GetSchedule($)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
   
-  Log3 $name, 5, "RainbirdZone ($name) - GetSchedule[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_GetSchedule($name) - GetSchedule[$zoneId] was called");
 
   # send command via RainbirdController
   IOWrite( $hash, "ZoneGetSchedule", $zoneId);
@@ -821,7 +818,7 @@ sub RainbirdZone_UpdateSchedule($)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - UpdateSchedule[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_UpdateSchedule($name) - UpdateSchedule[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -860,7 +857,7 @@ sub RainbirdZone_SetSchedule($)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetSchedule[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetSchedule($name) - SetSchedule[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -894,7 +891,7 @@ sub RainbirdZone_SetScheduleMode($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleMode[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetScheduleMode($name) - SetScheduleMode[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -930,7 +927,7 @@ sub RainbirdZone_SetScheduleTimer($$$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleTimer[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetScheduleTimer($name) - SetScheduleTimer[$zoneId] was called");
 
   ### off-value is "24:00"
   if(lc $timeString eq "off")
@@ -978,7 +975,7 @@ sub RainbirdZone_SetScheduleTimespan($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleTimespan[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetScheduleTimespan($name) - SetScheduleTimespan[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -1014,7 +1011,7 @@ sub RainbirdZone_SetScheduleWeekday($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleWeekday[$zoneId] was called \"$weekdayList\"";
+  Log3($name, 5, "RainbirdZone_SetScheduleWeekday($name) - SetScheduleWeekday[$zoneId] was called \"$weekdayList\"");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -1067,7 +1064,7 @@ sub RainbirdZone_SetScheduleWeekday($$)
           }
         } 
         
-    Log3 $name, 5, "RainbirdZone ($name) - SetScheduleWeekday[$zoneId] was called \"$weekdays\"";
+        Log3($name, 5, "RainbirdZone_SetScheduleWeekday($name) - SetScheduleWeekday[$zoneId] was called \"$weekdays\"");
   
         substr($rawValue, 20, 2) = sprintf("%02X", $weekdays);
         
@@ -1087,7 +1084,7 @@ sub RainbirdZone_SetScheduleDayInterval($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleDayInterval[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetScheduleDayInterval($name) - SetScheduleDayInterval[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
@@ -1130,7 +1127,7 @@ sub RainbirdZone_SetScheduleDayIntervalOffset($$)
   my $name = $hash->{NAME};
   my $zoneId = $hash->{ZONEID};
 
-  Log3 $name, 5, "RainbirdZone ($name) - SetScheduleDayIntervalOffset[$zoneId] was called";
+  Log3($name, 5, "RainbirdZone_SetScheduleDayIntervalOffset($name) - SetScheduleDayIntervalOffset[$zoneId] was called");
 
   if(defined($hash->{IODev}) and
     defined($hash->{IODev}{helper}))
