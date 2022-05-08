@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.2";
+my $VERSION = "2.0.3";
 
 use strict;
 use warnings;
@@ -1517,7 +1517,7 @@ sub RainbirdController_Get($@)
       $list .= " DeviceState:noArg" if($hash->{helper}{DEBUG} ne "0");
       $list .= " IrrigationState:noArg" if($hash->{helper}{DEBUG} ne "0");
       $list .= " ModelAndVersion:noArg" if($hash->{helper}{DEBUG} ne "0");
-      $list .= " NetworStatus:noArg" if($hash->{helper}{DEBUG} ne "0");
+      $list .= " NetworkStatus:noArg" if($hash->{helper}{DEBUG} ne "0");
       $list .= " RainDelay:noArg" if($hash->{helper}{DEBUG} ne "0");
       $list .= " RainSensorBypass:noArg" if($hash->{helper}{DEBUG} ne "0");
       $list .= " RainSensorState:noArg" if($hash->{helper}{DEBUG} ne "0");
@@ -4508,6 +4508,15 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       </li>
       <li><B>Time</B><a name="RainbirdControllerTime"></a><br>
         Get internal device time.
+      </li>
+      <li><B>NetworkStatus</B><a name="RainbirdControllerNetworkStatus"></a><br>
+        Get NetworkStatus.
+      </li>
+      <li><B>Settings</B><a name="RainbirdControllerSettings"></a><br>
+        Get Settings.
+      </li>
+      <li><B>WifiParams</B><a name="RainbirdControllerWifiParams"></a><br>
+        Get WifiParams.
       </li>
       <li><B>ZoneSchedule</B><a name="RainbirdControllerZoneSchedule"></a><br>
         Get schedule of a zone.
