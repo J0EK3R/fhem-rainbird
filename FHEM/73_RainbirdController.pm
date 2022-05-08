@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.3";
+my $VERSION = "2.0.4";
 
 use strict;
 use warnings;
@@ -693,7 +693,7 @@ sub RainbirdController_Define($$)
 
   # ensure attribute event-on-change-reading is present
   # exclude readings currentTime and currentDate
-  CommandAttr( undef, $name . ' event-on-change-reading (?!currentTime).*' )
+  CommandAttr( undef, $name . ' event-on-change-reading (?!InternalTime).*' )
     if ( AttrVal( $name, 'event-on-change-reading', 'none' ) eq 'none' );
 
   # set reference to this instance in global modules hash
@@ -1546,8 +1546,8 @@ sub RainbirdController_UpdateInternals($)
     $hash->{$DebugMarker . "_IsDisabled"}                       = $hash->{helper}{IsDisabled};
     $hash->{$DebugMarker . "_Password"}                         = "\"" . $hash->{helper}{Password} . "\"";
     
-    $hash->{$DebugMarker . "_Loop_Timer_On"}                    = $hash->{helper}{Timer_Loop_On};
-    $hash->{$DebugMarker . "_Loop_Timer_Count"}                 = $hash->{helper}{Timer_Loop_Count};
+    $hash->{$DebugMarker . "_Timer_Loop_On"}                    = $hash->{helper}{Timer_Loop_On};
+    $hash->{$DebugMarker . "_Timer_Loop_Count"}                 = $hash->{helper}{Timer_Loop_Count};
 
     $hash->{$DebugMarker . "_Timer_Retry_On"}                   = $hash->{helper}{Timer_Retry_On};
     $hash->{$DebugMarker . "_Timer_Retry_Count"}                = $hash->{helper}{Timer_Retry_Count};
@@ -1569,6 +1569,12 @@ sub RainbirdController_UpdateInternals($)
     foreach my $key (keys %$cmdTable)
     {
       $hash->{$DebugMarker . "_" . $key} = $hash->{helper}{CMD}{$key} 
+    } 
+
+    my $dbgTable = $hash->{helper}{Dbg};
+    foreach my $key (keys %$dbgTable)
+    {
+      $hash->{$DebugMarker . "_" . $key} = $hash->{helper}{Dbg}{$key} 
     } 
   }
   else
@@ -3706,7 +3712,7 @@ sub RainbirdController_ResponseProcessing($$)
   
   if(not defined($password))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: password not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: password not defined");
     return undef;
   }
 
@@ -3714,8 +3720,14 @@ sub RainbirdController_ResponseProcessing($$)
   my $decrypted_data = RainbirdController_DecryptData($hash, $data, $password);
   if(not defined($decrypted_data))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: encrypted_data not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: encrypted_data not defined");
     return undef;
+  }
+
+  if($hash->{helper}{DEBUG} ne "0")
+  {
+    $hash->{helper}{Dbg}{Result_Decrypt} = $decrypted_data;
+    RainbirdController_UpdateInternals($hash);
   }
 
   ### create structure from json string
@@ -3723,15 +3735,21 @@ sub RainbirdController_ResponseProcessing($$)
 
   if ($@)
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: JSON error while request: $@");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: JSON error while request: $@");
     return undef;
   }
   
-  if( not defined( $decode_json ) or
-    not defined( $decode_json->{id} or
+  if(not defined( $decode_json ))
+  {
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: no JSON result.data");
+    return undef;
+  }
+  
+  if(not defined( $decode_json->{id} or
     not defined( $decode_json->{result} )))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: no result.data");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: wrong JSON result.data");
+    
     return undef;
   }
  
@@ -3757,7 +3775,7 @@ sub RainbirdController_ResponseProcessing($$)
     # }  
     if(not defined( $decode_json->{result}->{data} ))
     {
-      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: result data not defined Data:'$decrypted_data'");
+      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: result data not defined Data:'$decrypted_data'");
       return undef;
     }
     
@@ -3766,7 +3784,7 @@ sub RainbirdController_ResponseProcessing($$)
   
     if(not defined($decoded))
     {
-      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: decoded not defined");
+      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: decoded not defined");
       return undef;
     }
 
@@ -3861,7 +3879,7 @@ sub RainbirdController_ResponseProcessing($$)
   ### not defined
   else
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id]: dataMethod \"$dataMethod\" not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: dataMethod \"$dataMethod\" not defined");
     return undef;
   }
 }
