@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.1";
+my $VERSION = "2.0.2";
 
 use strict;
 use warnings;
@@ -1260,7 +1260,7 @@ sub RainbirdController_Set($@)
       ### debug mode:
       if($hash->{ZONESAVAILABLECOUNT} > 0)
       {
-        $list .= "IrrigateZone: " . join(",", (1..($hash->{ZONESAVAILABLECOUNT}))) . " " if($hash->{helper}{DEBUG} ne "0");
+        $list .= "IrrigateZone:" . join(",", (1..($hash->{ZONESAVAILABLECOUNT}))) . " " if($hash->{helper}{DEBUG} ne "0");
       }
       else
       {
