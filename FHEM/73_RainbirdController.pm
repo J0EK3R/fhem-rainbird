@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.4";
+my $VERSION = "2.0.5";
 
 use strict;
 use warnings;
@@ -115,7 +115,7 @@ sub RainbirdController_TestRAW($$;$);
 
 ### communication
 sub RainbirdController_Command($$$@);
-sub RainbirdController_Request($$$$$);
+sub RainbirdController_Request($$$$$$);
 sub RainbirdController_ErrorHandling($$$);
 sub RainbirdController_ResponseProcessing($$);
 
@@ -569,8 +569,9 @@ my $BLOCK_SIZE = 16;
 my $INTERRUPT = "\x00";
 my $PAD = "\x10";
 
-my $CMDSUPPORTPREFIX = "CMDSUPPORT_"; # hide with prefix "."
-my $CMDSUPPORT_3F =  $CMDSUPPORTPREFIX . '3F';
+my $CMDSUPPORTPREFIX    = "Cmd_"; # hide with prefix "."
+my $CMDSUPPORTPOSTFIX   = "_Support"; # hide with prefix "."
+my $CMDSUPPORT_3F =  $CMDSUPPORTPREFIX . '3F' . $CMDSUPPORTPOSTFIX;
 
 ### HTML hedaer
 my $HEAD = 
@@ -604,6 +605,7 @@ sub RainbirdController_Initialize($)
   $hash->{AttrList} = 
     "debug:0,1 " . 
     "disable:0,1 " . 
+    "checkcmd:0,1 " . 
     "autocreatezones:1,0 " . 
     "interval " . 
     "disabledForIntervals " . 
@@ -662,6 +664,7 @@ sub RainbirdController_Define($$)
 
   $hash->{helper}{DEBUG}                    = "0";
   $hash->{helper}{IsDisabled}               = "0";
+  $hash->{helper}{CheckCommandSupport}      = "1";
   $hash->{helper}{RequestCount}             = 0; # statistics
   $hash->{helper}{ResponseCount}            = 0; # statistics
   $hash->{helper}{ResponseCount_Success}    = 0; # statistics
@@ -681,7 +684,8 @@ sub RainbirdController_Define($$)
   $hash->{helper}{Password}                 = RainbirdController_ReadPassword($hash);
 
   # dont check these commands
-  $hash->{helper}{CMD}{$CMDSUPPORTPREFIX . '04'}      = 1;
+  my $cmdKey_04 = $CMDSUPPORTPREFIX . "04" . $CMDSUPPORTPOSTFIX;
+  $hash->{helper}{CMD}{$cmdKey_04} = "not checked";
     
   # set attribute defaults
   CommandAttr( undef, $name . ' room Rainbird' )
@@ -805,18 +809,18 @@ sub RainbirdController_Attr(@)
     }
   }
 
-
   ### Attribute "debug"
-  elsif ( $attrName eq "debug" )
+  elsif ($attrName eq "debug" )
   {
-    if ($cmd eq "set")
+    if ($cmd eq "set" and 
+      $attrVal eq "1")
     {
       Log3($name, 3, "RainbirdController_Attr($name) - debugging enabled");
 
       $hash->{helper}{DEBUG} = "$attrVal";
       RainbirdController_UpdateInternals($hash);
     } 
-    elsif ($cmd eq "del" )
+    else
     {
       Log3($name, 3, "RainbirdController_Attr($name) - debugging disabled");
 
@@ -825,6 +829,21 @@ sub RainbirdController_Attr(@)
     }
   }
 
+  ### Attribute "checkcmd"
+  elsif ($attrName eq "checkcmd" )
+  {
+    if ($cmd eq "set" and 
+      $attrVal eq "1")
+    {
+      $hash->{helper}{CheckCommandSupport} = "1";
+      RainbirdController_UpdateInternals($hash);
+    } 
+    else
+    {
+      $hash->{helper}{CheckCommandSupport} = "0";
+      RainbirdController_UpdateInternals($hash);
+    }
+  }
 
   ### Attribute "disabledForIntervals"
   elsif ($attrName eq "disabledForIntervals")
@@ -1434,8 +1453,16 @@ sub RainbirdController_Get($@)
     return "usage: $cmd <hexcommand>"
       if ( @args != 1 );
 
-    my $command = $args[0];
-    return RainbirdController_GetCommandSupport($hash, $command);
+    my $command = lc $args[0];
+
+    if($command =~ m/^0x[0-9A-F]+$/i) 
+    {
+      return RainbirdController_GetCommandSupport($hash, $command);
+    }
+    else
+    {
+      return RainbirdController_GetCommandSupport($hash, sprintf("%X", $command));
+    }
   } 
   
   ### DecryptHEX
@@ -1545,7 +1572,8 @@ sub RainbirdController_UpdateInternals($)
   {
     $hash->{$DebugMarker . "_IsDisabled"}                       = $hash->{helper}{IsDisabled};
     $hash->{$DebugMarker . "_Password"}                         = "\"" . $hash->{helper}{Password} . "\"";
-    
+    $hash->{$DebugMarker . "_CheckCommandSupport"}              = $hash->{helper}{CheckCommandSupport};
+
     $hash->{$DebugMarker . "_Timer_Loop_On"}                    = $hash->{helper}{Timer_Loop_On};
     $hash->{$DebugMarker . "_Timer_Loop_Count"}                 = $hash->{helper}{Timer_Loop_Count};
 
@@ -1598,8 +1626,10 @@ sub RainbirdController_TimerStop($)
   Log3($name, 4, "RainbirdController_TimerStop($name) - timerStop");
 
   RemoveInternalTimer($TimerLoopIdentifier);
+  RemoveInternalTimer($TimerRetryIdentifier);
   
-  $hash->{helper}{Timer_Loop_On} = 0;
+  $hash->{helper}{Timer_Loop_On}  = 0;
+  $hash->{helper}{Timer_Retry_On} = 0;
   RainbirdController_UpdateInternals($hash);
 }
 
@@ -1857,7 +1887,7 @@ sub RainbirdController_GetAvailableZones($;$)
   my $name = $hash->{NAME};
   
   my $command = "AvailableStations";   
-  my $mask = sprintf("%%0%dX", $ControllerResponses{"83"}->{"setStations"}->{"length"});
+  my $mask = sprintf("%%0%dX", $ControllerResponses{"83"}->{12}->{"setStations"}->{"length"});
 
   Log3($name, 4, "RainbirdController_GetAvailableZones($name) - GetAvailableZones mask: $mask");
   
@@ -1927,7 +1957,7 @@ sub RainbirdController_GetCommandSupport($$;$)
   my $command = "CommandSupport";
      
   Log3($name, 4, "RainbirdController_GetCommandSupport($name) - GetCommandSupport");
-    
+
   # definition of the lambda function wich is called to process received data
   my $resultCallback = sub 
   {
@@ -1935,24 +1965,18 @@ sub RainbirdController_GetCommandSupport($$;$)
     
     Log3($name, 4, "RainbirdController_GetCommandSupport($name) - GetCommandSupport lambda");
     
-    if( defined($result) )
+    if (defined($result))
     {
-      readingsBeginUpdate($hash);
-
-      if( defined($result->{"support"}) and
+      if (defined($result->{"support"}) and
         defined($result->{"commandEcho"}))
       {
-        $hash->{helper}{CMD}{$CMDSUPPORTPREFIX . $result->{"commandEcho"}} = $result->{"support"};
-
-        #readingsBulkUpdate( $hash, 'commandSupport', $result->{"support"}, 1 );
-        #readingsBulkUpdate( $hash, 'commandEcho', $result->{"commandEcho"}, 1 );
+        my $cmdKey = $CMDSUPPORTPREFIX . $result->{"commandEcho"} . $CMDSUPPORTPOSTFIX;
+        $hash->{helper}{CMD}{$cmdKey} = "" . $result->{"support"};
       }
-
-      readingsEndUpdate( $hash, 1 );
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetCommandSupport($name) - GetCommandSupport callback");
       $callback->();
@@ -1960,16 +1984,25 @@ sub RainbirdController_GetCommandSupport($$;$)
   }; 
   
   ### check if value start with 0x  
-  $askCommand = lc $askCommand;
-  if($askCommand =~ m/^0x[0-9A-F]+$/i) 
+  my $commandValue = hex("0x" . lc $askCommand);
+  # Log3($name, 4, "RainbirdController_GetCommandSupport($name) - GetCommandSupport hex $askCommand: $commandValue");
+  
+  if ($hash->{helper}{CheckCommandSupport} eq "1")
   {
     # send command
-    RainbirdController_Command($hash, $resultCallback, $command, hex($askCommand) );
+    RainbirdController_Command($hash, $resultCallback, $command, $commandValue );
   }
   else
   {
-    # send command
-    RainbirdController_Command($hash, $resultCallback, $command, int($askCommand) );
+    my $cmdKey = $CMDSUPPORTPREFIX . $askCommand . $CMDSUPPORTPOSTFIX;
+    $hash->{helper}{CMD}{$cmdKey} = "not checked";
+
+    # if there is a callback then call it
+    if (defined($callback) )
+    {
+      Log3($name, 4, "RainbirdController_GetCommandSupport($name) - GetCommandSupport callback");
+      $callback->();
+    }
   }
 }
 
@@ -2274,7 +2307,7 @@ sub RainbirdController_GetActiveStation($;$)
   my $name = $hash->{NAME};
     
   my $command = "CurrentStationsActive";
-  my $mask = sprintf("%%0%dX", $ControllerResponses{"BF"}->{"activeStations"}->{"length"});
+  my $mask = sprintf("%%0%dX", $ControllerResponses{"BF"}->{12}->{"activeStations"}->{"length"});
 
   Log3($name, 4, "RainbirdController_GetActiveStation($name) - GetActiveStation mask: $mask");
     
@@ -2285,7 +2318,7 @@ sub RainbirdController_GetActiveStation($;$)
     
     Log3($name, 4, "RainbirdController_GetActiveStation($name) - GetActiveStation lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
@@ -3241,7 +3274,7 @@ sub RainbirdController_TestRAW($$;$)
     
   # send command
   my $params = '"data":"' . $rawHexString . '", "length":"' . (length($rawHexString) / 2) . '"';
-  RainbirdController_Request($hash, $resultCallback, undef, "tunnelSip", $params );
+  RainbirdController_Request($hash, $resultCallback, undef, "RAW", "tunnelSip", $params );
 }
 
 #####################################
@@ -3353,7 +3386,7 @@ sub RainbirdController_Command($$$@)
   {
     
   }
-  elsif( defined( $command_set ) )
+  elsif (defined($command_set))
   {
     my $method = $command_set->{"method"};
 
@@ -3361,20 +3394,21 @@ sub RainbirdController_Command($$$@)
     if($method eq "tunnelSip")
     {
       my $commandString = $command_set->{"command"};
-      my $cmdKey = $CMDSUPPORTPREFIX . $commandString;
+      my $cmdKey = $CMDSUPPORTPREFIX . $commandString . $CMDSUPPORTPOSTFIX;
 
       ### check if support of command was checked before
-      if(not defined($hash->{helper}{CMD}{$cmdKey}))
+      if (not defined($hash->{helper}{CMD}{$cmdKey}))
       {
         ### callback - this function have to be recalled
         my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
 
         ### check support of the command und recall this function 
-        RainbirdController_GetCommandSupport($hash, "0x" . $commandString, $commandCallback);
+        RainbirdController_GetCommandSupport($hash, $commandString, $commandCallback);
         return; # callback is handled
       }
       ### command is supported
-      elsif($hash->{helper}{CMD}{$cmdKey} == 1)
+      elsif ($hash->{helper}{CMD}{$cmdKey} ne "0" or
+        $hash->{helper}{CheckCommandSupport} eq "0")
       {
         # encode data
         my $data = RainbirdController_EncodeData($hash, $command_set, @args);  
@@ -3384,7 +3418,7 @@ sub RainbirdController_Command($$$@)
           my $params = '"data":"' . $data . '", "length":"' . (length($data) / 2) . '"';
         
           ### send request to device 
-          RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+          RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $commandString . "_" . $command, $method, $params );
           return; # callback is handled
         }
         else
@@ -3403,7 +3437,7 @@ sub RainbirdController_Command($$$@)
        my $params = '';
 
        ### send request to device 
-       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $command, $method, $params );
        return; # callback is handled
     }
     ### method "getNetworkStatus"
@@ -3412,7 +3446,7 @@ sub RainbirdController_Command($$$@)
        my $params = '';
 
        ### send request to device 
-       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $command, $method, $params );
        return; # callback is handled
     }
     ### method "getSettings"
@@ -3421,7 +3455,7 @@ sub RainbirdController_Command($$$@)
        my $params = '';
 
        ### send request to device 
-       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $method, $params );
+       RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $command, $method, $params );
        return; # callback is handled
     }
     ### method is not supported
@@ -3447,9 +3481,9 @@ sub RainbirdController_Command($$$@)
 #####################################
 # Request
 #####################################
-sub RainbirdController_Request($$$$$)
+sub RainbirdController_Request($$$$$$)
 {
-  my ( $hash, $resultCallback, $expectedResponse_id, $dataMethod, $parameters ) = @_;
+  my ( $hash, $resultCallback, $expectedResponse_id, $command, $dataMethod, $parameters ) = @_;
   my $name = $hash->{NAME};
 
   my $sendReceive = undef; 
@@ -3465,22 +3499,6 @@ sub RainbirdController_Request($$$$$)
       $hash->{REQUESTID} = 0;
       $request_id = 0;
     }
-  
-#    my $send_data = 
-#    '{
-#      "id":' . $request_id . ',
-#      "jsonrpc":"2.0",
-#      "method":"tunnelSip",
-#      "params":
-#      {
-#        "data":"' . $data . '",
-#        "length":"' . (length($data) / 2) . '"
-#      }
-#    }';
-    
-    my $send_data = '{"id":' . $request_id . ',"jsonrpc":"2.0","method":"' . $dataMethod . '","params": {' . $parameters . '}}';
-  
-    Log3($name, 5, "RainbirdController_Request($name) - Request[ID:$request_id] send_data: $send_data");
 
     my $password = $hash->{helper}{Password};
     
@@ -3496,7 +3514,29 @@ sub RainbirdController_Request($$$$$)
         $resultCallback->(undef, undef);
       }
     }
+
+#    my $send_data = 
+#    '{
+#      "id":' . $request_id . ',
+#      "jsonrpc":"2.0",
+#      "method":"tunnelSip",
+#      "params":
+#      {
+#        "data":"' . $data . '",
+#        "length":"' . (length($data) / 2) . '"
+#      }
+#    }';
     
+    my $send_data = '{"id":' . $request_id . ',"jsonrpc":"2.0","method":"' . $dataMethod . '","params": {' . $parameters . '}}';
+
+    if($hash->{helper}{DEBUG} ne "0")
+    {
+      $hash->{helper}{Dbg}{"Cmd_" . $command . "_REQ"} = $send_data;
+      RainbirdController_UpdateInternals($hash);
+    }
+
+    Log3($name, 5, "RainbirdController_Request($name) - Request[ID:$request_id] send_data: $send_data");
+
     ### encrypt data
     my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, $password);
 
@@ -3521,6 +3561,7 @@ sub RainbirdController_Request($$$$$)
       
       $param->{expectedResponse_id} = $expectedResponse_id;
       $param->{dataMethod}          = $dataMethod;
+      $param->{command}             = $command;
       $param->{sendData}            = $send_data;
       
       $param->{leftRetries}         = $leftRetries;
@@ -3565,6 +3606,7 @@ sub RainbirdController_ErrorHandling($$$)
   my $retryCallback             = $param->{retryCallback};
   my $resultCallback            = $param->{resultCallback};
   my $sendData                  = $param->{sendData};
+  my $command                   = $param->{command};
 
   my $response_timestamp        = gettimeofday();
   my $request_timestamp         = $param->{request_timestamp};
@@ -3707,6 +3749,7 @@ sub RainbirdController_ResponseProcessing($$)
   my $expectedResponse_id = $param->{expectedResponse_id};
   my $dataMethod          = $param->{dataMethod};
   my $sendData            = $param->{sendData};
+  my $command             = $param->{command};
 
   my $password = $hash->{helper}{Password};
   
@@ -3726,7 +3769,7 @@ sub RainbirdController_ResponseProcessing($$)
 
   if($hash->{helper}{DEBUG} ne "0")
   {
-    $hash->{helper}{Dbg}{Result_Decrypt} = $decrypted_data;
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_RES"} = $decrypted_data;
     RainbirdController_UpdateInternals($hash);
   }
 
@@ -4552,6 +4595,9 @@ sub RainbirdController_GetTimeFrom10Minutes($)
       <li><a name="RainbirdControllerdebug">debug</a><br>
         Switches to debug mode.<br>
         If enabled then additional internals for <b>debugging purposes</b> will be shown.<br> 
+      </li>
+      <li><a name="RainbirdControllercheckcmd">checkcmd</a><br>
+        Enables or disables the checking if command is supported by device. (Default=1)<br>
       </li>
       <li><a name="RainbirdControllerinterval">interval</a><br>
         Interval of polling in seconds (Default=60).<br>
