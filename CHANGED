@@ -1,3 +1,3 @@
 FHEM Rainbird last changes:
-2022-05-08
- - more debuggng
+2022-05-10
+ - improved debugging, new attribute checkcmd
