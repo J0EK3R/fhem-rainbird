@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.5";
+my $VERSION = "2.0.6";
 
 use strict;
 use warnings;
@@ -562,6 +562,7 @@ my $ResponseCountSuccessRetry = "ResponseCount_Success_Try_";
 
 my $TimerLoopIdentifier       = "Loop";
 my $TimerRetryIdentifier      = "Retry";
+my $NotCheckedValue           = "not checked yet";
 
 
 my $DEFAULT_PAGE = 0;
@@ -704,7 +705,7 @@ sub RainbirdController_Define($$)
   $modules{RainbirdController}{defptr}{CONTROLLER} = $hash;
 
   # set initial state
-  readingsSingleUpdate( $hash, 'state', 'initialized', 1 );
+  readingsSingleUpdate($hash, "state", 'initialized', 1 );
 
   Log3($name, 3, "RainbirdController_Define($name) - defined RainbirdController");
 
@@ -792,7 +793,7 @@ sub RainbirdController_Attr(@)
 
       readingsBeginUpdate($hash);
       readingsBulkUpdateIfChanged( $hash, "state", "inactive", 1 );
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     } 
     else
     {
@@ -803,7 +804,7 @@ sub RainbirdController_Attr(@)
 
       readingsBeginUpdate($hash);
       readingsBulkUpdateIfChanged( $hash, "state", "active", 1 );
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
 
       RainbirdController_TimerRestart($hash);
     }
@@ -857,7 +858,7 @@ sub RainbirdController_Attr(@)
     } 
     else
     {
-      readingsSingleUpdate( $hash, "state", "active", 1 );
+      readingsSingleUpdate($hash, "state", "active", 1 );
       
       Log3($name, 3, "RainbirdController_Attr($name) - enabled");
     }
@@ -1074,7 +1075,7 @@ sub RainbirdController_Set($@)
   } 
   
   ### IrrigateZone
-  elsif ( lc $cmd eq lc 'IrrigateZone' )
+  elsif ( lc $cmd eq lc "IrrigateZone" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1089,7 +1090,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### RainDelay
-  elsif ( lc $cmd eq lc 'RainDelay' )
+  elsif ( lc $cmd eq lc "RainDelay" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1103,7 +1104,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### RainSensorBypass
-  elsif ( lc $cmd eq lc 'RainSensorBypass' )
+  elsif ( lc $cmd eq lc "RainSensorBypass" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1117,7 +1118,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### SynchronizeDateTime
-  elsif ( lc $cmd eq lc 'SynchronizeDateTime' )
+  elsif ( lc $cmd eq lc "SynchronizeDateTime" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1136,7 +1137,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### InternalTime
-  elsif ( lc $cmd eq lc 'InternalTime' )
+  elsif ( lc $cmd eq lc "InternalTime" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1146,7 +1147,7 @@ sub RainbirdController_Set($@)
 
     my ($msg, $hour, $min, $sec) = RainbirdController_GetTimeSpec($args[0]);
     
-    if( defined($msg) )
+    if (defined($msg) )
     {
       return $msg;
     }    
@@ -1155,7 +1156,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### InternalDate
-  elsif ( lc $cmd eq lc 'InternalDate' )
+  elsif ( lc $cmd eq lc "InternalDate" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1165,7 +1166,7 @@ sub RainbirdController_Set($@)
 
     my ($msg, $year, $month, $day) = RainbirdController_GetDateSpec($args[0]);
     
-    if( defined($msg) )
+    if (defined($msg) )
     {
       return $msg;
     }    
@@ -1174,7 +1175,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### Update
-  elsif ( lc $cmd eq lc 'Update' )
+  elsif ( lc $cmd eq lc "Update" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1183,7 +1184,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### FactoryReset
-  elsif ( lc $cmd eq lc 'FactoryReset' )
+  elsif ( lc $cmd eq lc "FactoryReset" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1203,7 +1204,7 @@ sub RainbirdController_Set($@)
   }
 
   ### TestCMD
-  elsif ( lc $cmd eq lc 'TestCMD' )
+  elsif ( lc $cmd eq lc "TestCMD" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1219,7 +1220,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### TestRAW
-  elsif ( lc $cmd eq lc 'TestRAW' )
+  elsif ( lc $cmd eq lc "TestRAW" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1233,7 +1234,7 @@ sub RainbirdController_Set($@)
   } 
 
   ### ZoneGetSchedule
-  elsif ( lc $cmd eq lc 'ZoneGetSchedule' )
+  elsif ( lc $cmd eq lc "ZoneGetSchedule" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1246,7 +1247,7 @@ sub RainbirdController_Set($@)
   } 
   
   ### ZoneSetScheduleRAW
-  elsif ( lc $cmd eq lc 'ZoneSetScheduleRAW' )
+  elsif ( lc $cmd eq lc "ZoneSetScheduleRAW" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1306,7 +1307,7 @@ sub RainbirdController_Get($@)
   Log3($name, 4, "RainbirdController_Get($name) - Get was called cmd: $cmd");
 
   ### DeviceState
-  if ( lc $cmd eq lc 'DeviceState' )
+  if ( lc $cmd eq lc "DeviceState" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1315,7 +1316,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### WifiParams
-  elsif ( lc $cmd eq lc 'WifiParams' )
+  elsif ( lc $cmd eq lc "WifiParams" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1324,7 +1325,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### NetworStatus
-  elsif ( lc $cmd eq lc 'NetworStatus' )
+  elsif ( lc $cmd eq lc "NetworStatus" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1333,7 +1334,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### Settings
-  elsif ( lc $cmd eq lc 'Settings' )
+  elsif ( lc $cmd eq lc "Settings" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1342,7 +1343,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### ModelAndVersion
-  elsif ( lc $cmd eq lc 'ModelAndVersion' )
+  elsif ( lc $cmd eq lc "ModelAndVersion" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1351,7 +1352,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### AvailableZones
-  elsif ( lc $cmd eq lc 'AvailableZones' )
+  elsif ( lc $cmd eq lc "AvailableZones" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1360,7 +1361,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### SerialNumber
-  elsif ( lc $cmd eq lc 'SerialNumber' )
+  elsif ( lc $cmd eq lc "SerialNumber" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1369,7 +1370,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### Time
-  elsif ( lc $cmd eq lc 'Time' )
+  elsif ( lc $cmd eq lc "Time" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1378,7 +1379,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### Date
-  elsif ( lc $cmd eq lc 'Date' )
+  elsif ( lc $cmd eq lc "Date" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1387,7 +1388,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### RainSensorBypass
-  elsif ( lc $cmd eq lc 'RainSensorBypass' )
+  elsif ( lc $cmd eq lc "RainSensorBypass" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1396,7 +1397,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### RainSensorState
-  elsif ( lc $cmd eq lc 'RainSensorState' )
+  elsif ( lc $cmd eq lc "RainSensorState" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1405,7 +1406,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### RainDelay
-  elsif ( lc $cmd eq lc 'RainDelay' )
+  elsif ( lc $cmd eq lc "RainDelay" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1414,7 +1415,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### CurrentIrrigation
-  elsif ( lc $cmd eq lc 'CurrentIrrigation' )
+  elsif ( lc $cmd eq lc "CurrentIrrigation" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1423,7 +1424,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### IrrigationState
-  elsif ( lc $cmd eq lc 'IrrigationState' )
+  elsif ( lc $cmd eq lc "IrrigationState" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1432,7 +1433,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### ZoneSchedule
-  elsif ( lc $cmd eq lc 'ZoneSchedule' )
+  elsif ( lc $cmd eq lc "ZoneSchedule" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1445,7 +1446,7 @@ sub RainbirdController_Get($@)
   } 
   
   ### CommandSupport
-  elsif ( lc $cmd eq lc 'CommandSupport' )
+  elsif ( lc $cmd eq lc "CommandSupport" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1454,19 +1455,21 @@ sub RainbirdController_Get($@)
       if ( @args != 1 );
 
     my $command = lc $args[0];
+    my $hexValue;
 
-    if($command =~ m/^0x[0-9A-F]+$/i) 
+    if($command =~ m/^0x[0-9a-f]+$/i) 
     {
-      return RainbirdController_GetCommandSupport($hash, $command);
+      $hexValue = sprintf("%X", hex($command));
     }
     else
     {
-      return RainbirdController_GetCommandSupport($hash, sprintf("%X", $command));
+      $hexValue = sprintf("%X", $command);
     }
+    return RainbirdController_GetCommandSupport($hash, $hexValue);
   } 
   
   ### DecryptHEX
-  elsif ( lc $cmd eq lc 'DecryptHEX' )
+  elsif ( lc $cmd eq lc "DecryptHEX" )
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
@@ -1477,7 +1480,7 @@ sub RainbirdController_Get($@)
     ### args like 2A D5 4B E0 84 83 FC 71 31 4D B3 29 18 F1 EE DB 8F E5 D7 FF 21 BA 9D 78 08 05 D9 99 56 81 86 5E 98 C3 6B CD 4A 10 F8 E9 DF 49 21 73 4D 09 F6 90 91 06 3A E8 B2 43 9E EA 31 8A 1D 5C 44 98 EA 06 D7 1D BE ED BC 23 F9 35 3C 06 D7 AC 5A BD 47 A2 01 FF 2A 90 A1 51 22 44 98 B8 21 B7 C6 C8 67 90 AA 41 BB 90 E2 6C 9C DE 1A 3D 90 56 DA 94 3B F3 35 18 7A 87 64 05 7E DE E4 27 C4 87 C9 4B FC 6B 56 3A 5D 6B 96 3B 84 E7 37 BD F4 B4 2A 62 99 5C
     my $string = uc(join('', @args));
 
-    #readingsBulkUpdate( $hash, 'string', $string, 1 );
+    #readingsBulkUpdate($hash, 'string', $string, 1 );
     
     ### string between {}
     while($string =~ m/{(.*)}/)
@@ -1497,35 +1500,35 @@ sub RainbirdController_Get($@)
       ($string) = ($string =~ /\((.*)\)/);
     }
     
-    #readingsBulkUpdate( $hash, 'stringbetween', $string, 1 );
+    #readingsBulkUpdate($hash, 'stringbetween', $string, 1 );
 
     ### replace 0x|,
     while ($string =~ s/(0X)|,//) {}
-    #readingsBulkUpdate( $hash, 'stringreplace', $string, 1 );
+    #readingsBulkUpdate($hash, 'stringreplace', $string, 1 );
 
     my $bytearray = pack("H*", $string);
-    #readingsBulkUpdate( $hash, 'bytearray', (sprintf("%v02X", $bytearray) =~ s/\.//rg), 1 );
+    #readingsBulkUpdate($hash, 'bytearray', (sprintf("%v02X", $bytearray) =~ s/\.//rg), 1 );
     
     my $password = ($hash->{helper}{Password});
     ### decrypt
 
     if(not defined($password))
     {
-      readingsBulkUpdate( $hash, 'decryptedData', "password not defined", 1 );
+      readingsBulkUpdate($hash, "decryptedData", "password not defined", 1 );
     }
     
     my $decryptedData = eval { RainbirdController_DecryptData($hash, $bytearray, $password) };
   
     if ($@)
     {
-      readingsBulkUpdate( $hash, 'decryptedData', $@, 1 );
+      readingsBulkUpdate($hash, "decryptedData", $@, 1 );
     }
     else
     {  
-      readingsBulkUpdate( $hash, 'decryptedData', $decryptedData, 1 );
+      readingsBulkUpdate($hash, "decryptedData", $decryptedData, 1 );
     }
 
-    readingsEndUpdate( $hash, 1 );
+    readingsEndUpdate($hash, 1);
   } 
   
   ### else
@@ -1830,11 +1833,11 @@ sub RainbirdController_GetModelAndVersion($;$)
     
     Log3($name, 4, "RainbirdController_GetModelAndVersion($name) - GetModelAndVersion resultCallback");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"modelID"}) )
+      if (defined($result->{"modelID"}) )
       {
         my $modelId = $result->{"modelID"};
         
@@ -1843,7 +1846,7 @@ sub RainbirdController_GetModelAndVersion($;$)
         my $model = $KnownModels{$modelId};
 
         ### set known model name
-        if( defined($model) )
+        if (defined($model) )
         {
           $hash->{MODEL} = $model;
         }
@@ -1853,21 +1856,21 @@ sub RainbirdController_GetModelAndVersion($;$)
         }
       }
 
-      if( defined($result->{"protocolRevisionMajor"}) )
+      if (defined($result->{"protocolRevisionMajor"}) )
       {
         $hash->{PROTOCOLREVISIONMAJOR} = $result->{"protocolRevisionMajor"};
       }
 
-      if( defined($result->{"protocolRevisionMinor"}) )
+      if (defined($result->{"protocolRevisionMinor"}) )
       {
         $hash->{PROTOCOLREVISIONMINOR} = $result->{"protocolRevisionMinor"};;
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetModelAndVersion($name) - GetModelAndVersion callback");
       $callback->();
@@ -1898,11 +1901,11 @@ sub RainbirdController_GetAvailableZones($;$)
     
     Log3($name, 4, "RainbirdController_GetAvailableZones($name) - GetAvailableZones lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"setStations"}) )
+      if (defined($result->{"setStations"}) )
       {
         my $zonesAvailableCount = RainbirdController_GetAvailableZoneCountFromRaw($result->{"setStations"});
         my $zonesAvailableMask = RainbirdController_GetAvailableZoneMaskFromRaw($result->{"setStations"});
@@ -1911,14 +1914,14 @@ sub RainbirdController_GetAvailableZones($;$)
         $hash->{ZONESAVAILABLECOUNT}  = $zonesAvailableCount;
         $hash->{ZONESAVAILABLEMASK}   = $zonesAvailableMask;
 
-        #readingsBulkUpdate( $hash, 'zonesAvailable', $zonesAvailableCount);
+        #readingsBulkUpdate($hash, 'zonesAvailable', $zonesAvailableCount);
       }
-      if( defined($result->{"pageNumber"}) )
+      if (defined($result->{"pageNumber"}) )
       {
-        # readingsBulkUpdate( $hash, 'pageNumber', $result->{"pageNumber"}, 1 );
+        # readingsBulkUpdate($hash, 'pageNumber', $result->{"pageNumber"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
 
       ### encode $result to json string
       my $jsonString = eval{encode_json($result)};
@@ -1935,7 +1938,7 @@ sub RainbirdController_GetAvailableZones($;$)
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetAvailableZones($name) - GetAvailableZones callback");
       $callback->();
@@ -1995,7 +1998,7 @@ sub RainbirdController_GetCommandSupport($$;$)
   else
   {
     my $cmdKey = $CMDSUPPORTPREFIX . $askCommand . $CMDSUPPORTPOSTFIX;
-    $hash->{helper}{CMD}{$cmdKey} = "not checked";
+    $hash->{helper}{CMD}{$cmdKey} = $NotCheckedValue;
 
     # if there is a callback then call it
     if (defined($callback) )
@@ -2024,24 +2027,24 @@ sub RainbirdController_GetWaterBudget($$;$)
     
     Log3($name, 4, "RainbirdController_GetWaterBudget($name) - GetWaterBudget lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"programCode"}) )
+      if (defined($result->{"programCode"}) )
       {
-        readingsBulkUpdate( $hash, 'programCode', $result->{"programCode"}, 1 );
+        readingsBulkUpdate($hash, 'programCode', $result->{"programCode"}, 1 );
       }
-      if( defined($result->{"seasonalAdjust"}) )
+      if (defined($result->{"seasonalAdjust"}) )
       {
-        readingsBulkUpdate( $hash, 'seasonalAdjust', $result->{"seasonalAdjust"}, 1 );
+        readingsBulkUpdate($hash, 'seasonalAdjust', $result->{"seasonalAdjust"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetWaterBudget($name) - GetWaterBudget callback");
       $callback->();
@@ -2071,20 +2074,20 @@ sub RainbirdController_GetSerialNumber($;$)
     
     Log3($name, 4, "RainbirdController_GetSerialNumber($name) - GetSerialNumber lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"serialNumber"}) )
+      if (defined($result->{"serialNumber"}) )
       {
         $hash->{SERIALNUMBER} = sprintf("%08s", $result->{"serialNumber"});
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetSerialNumber($name) - GetSerialNumber callback");
       $callback->();
@@ -2114,22 +2117,22 @@ sub RainbirdController_GetCurrentTime($;$)
     
     Log3($name, 4, "RainbirdController_GetCurrentTime($name) - GetCurrentTime lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"hour"}) and
+      if (defined($result->{"hour"}) and
         defined($result->{"minute"}) and
         defined($result->{"second"}) )
       {
-        readingsBulkUpdate( $hash, 'InternalTime', sprintf("%02s:%02s:%02s", $result->{"hour"}, $result->{"minute"}, $result->{"second"}), 1 );
+        readingsBulkUpdate($hash, 'InternalTime', sprintf("%02s:%02s:%02s", $result->{"hour"}, $result->{"minute"}, $result->{"second"}), 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback))
+    if (defined($callback))
     {
       Log3($name, 4, "RainbirdController_GetCurrentTime($name) - GetCurrentTime callback");
       $callback->();
@@ -2159,11 +2162,11 @@ sub RainbirdController_SetCurrentTime($$$$;$)
     
     Log3($name, 4, "RainbirdController_SetCurrentTime($name) - SetCurrentTime lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading
@@ -2193,22 +2196,22 @@ sub RainbirdController_GetCurrentDate($;$)
     
     Log3($name, 4, "RainbirdController_GetCurrentDate($name) - GetCurrentDate lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"year"}) and
+      if (defined($result->{"year"}) and
         defined($result->{"month"}) and
         defined($result->{"day"}) )
       {
-        readingsBulkUpdate( $hash, 'InternalDate', sprintf("%04s-%02s-%02s", $result->{"year"}, $result->{"month"}, $result->{"day"}), 1 );
+        readingsBulkUpdate($hash, 'InternalDate', sprintf("%04s-%02s-%02s", $result->{"year"}, $result->{"month"}, $result->{"day"}), 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetCurrentDate($name) - GetCurrentDate callback");
       $callback->();
@@ -2238,11 +2241,11 @@ sub RainbirdController_SetCurrentDate($$$$;$)
     
     Log3($name, 4, "RainbirdController_SetCurrentDate($name) - SetCurrentDate lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading
@@ -2274,20 +2277,20 @@ sub RainbirdController_GetCurrentIrrigation($;$)
     
     Log3($name, 4, "RainbirdController_GetCurrentIrrigation($name) - GetCurrentIrrigation lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"irrigationState"}))
+      if (defined($result->{"irrigationState"}))
       {
-        readingsBulkUpdate( $hash, 'IrrigationState', $result->{"irrigationState"}, 1 );
+        readingsBulkUpdate($hash, 'IrrigationState', $result->{"irrigationState"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetCurrentIrrigation($name) - GetCurrentIrrigation callback");
       $callback->();
@@ -2322,7 +2325,7 @@ sub RainbirdController_GetActiveStation($;$)
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"activeStations"}))
+      if (defined($result->{"activeStations"}))
       {
         my $zoneActive = RainbirdController_GetZoneFromRaw($result->{"activeStations"});
         my $zoneActiveMask = 1 << ($zoneActive - 1);
@@ -2330,19 +2333,19 @@ sub RainbirdController_GetActiveStation($;$)
         $hash->{ZONEACTIVE} = $zoneActive;
         $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
-        readingsBulkUpdate( $hash, 'ZoneActive', $zoneActive);
+        readingsBulkUpdate($hash, 'ZoneActive', $zoneActive);
 
-        if( $zoneActive == 0 )
+        if ($zoneActive == 0 )
         {
-          readingsBulkUpdate( $hash, 'state', 'ready', 1 );
+          readingsBulkUpdate($hash, "state", 'ready', 1 );
         }
         else
         {
-          readingsBulkUpdate( $hash, 'state', 'irrigating', 1 );
+          readingsBulkUpdate($hash, "state", 'irrigating', 1 );
         }  
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
 
       ### encode $result to json string
       my $jsonString = eval{encode_json($result)};
@@ -2359,7 +2362,7 @@ sub RainbirdController_GetActiveStation($;$)
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetActiveStation($name) - GetActiveStation callback");
       $callback->();
@@ -2400,11 +2403,11 @@ sub RainbirdController_GetIrrigationState($;$)
     
     Log3($name, 4, "RainbirdController_GetIrrigationState($name) - GetIrrigationState lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"activeZone"}))
+      if (defined($result->{"activeZone"}))
       {
         my $zoneActive = $result->{"activeZone"};
         my $zoneActiveMask = 1 << ($zoneActive - 1);
@@ -2412,27 +2415,27 @@ sub RainbirdController_GetIrrigationState($;$)
         $hash->{ZONEACTIVE} = $zoneActive;
         $hash->{ZONEACTIVEMASK} = $zoneActiveMask;
         
-        readingsBulkUpdate( $hash, 'ZoneActive', $zoneActive);
+        readingsBulkUpdate($hash, 'ZoneActive', $zoneActive);
 
-        if( $zoneActive == 0 )
+        if ($zoneActive == 0 )
         {
-          readingsBulkUpdate( $hash, 'state', 'ready', 1 );
+          readingsBulkUpdate($hash, "state", 'ready', 1 );
         }
         else
         {
-          readingsBulkUpdate( $hash, 'state', 'irrigating', 1 );
+          readingsBulkUpdate($hash, "state", 'irrigating', 1 );
         }  
       }
 
-      if( defined($result->{"secondsLeft"}))
+      if (defined($result->{"secondsLeft"}))
       {
         my $secondsLeft = $result->{"secondsLeft"};
         $hash->{ZONEACTIVESECONDSLEFT} = $secondsLeft;
         
-        readingsBulkUpdate( $hash, 'IrrigationSecondsLeft', $secondsLeft, 1 );
+        readingsBulkUpdate($hash, 'IrrigationSecondsLeft', $secondsLeft, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
 
       # save result hash in helper
       $hash->{helper}{'IrrigationState'} = $result;
@@ -2452,7 +2455,7 @@ sub RainbirdController_GetIrrigationState($;$)
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetIrrigationState($name) - GetIrrigationState callback");
       $callback->();
@@ -2482,20 +2485,20 @@ sub RainbirdController_GetRainDelay($;$)
     
     Log3($name, 4, "RainbirdController_GetRainDelay($name) - GetRainDelay lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"delaySetting"}) )
+      if (defined($result->{"delaySetting"}) )
       {
-        readingsBulkUpdate( $hash, 'RainDelay', $result->{"delaySetting"}, 1 );
+        readingsBulkUpdate($hash, 'RainDelay', $result->{"delaySetting"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetRainDelay($name) - GetRainDelay callback");
       $callback->();
@@ -2519,7 +2522,7 @@ sub RainbirdController_SetRainDelay($$;$)
   Log3($name, 4, "RainbirdController_SetRainDelay($name) - SetRainDelay for $days days");
     
   ## check parameter
-  if( not defined($days) )
+  if (not defined($days) )
   {
   	return "parameter \"days\" not set!";
   }
@@ -2539,11 +2542,11 @@ sub RainbirdController_SetRainDelay($$;$)
     
     Log3($name, 4, "RainbirdController_SetRainDelay($name) - SetRainDelay lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading
@@ -2573,20 +2576,20 @@ sub RainbirdController_GetRainSensorState($;$)
     
     Log3($name, 4, "RainbirdController_GetRainSensorState($name) - GetRainSensorState lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"sensorState"}) )
+      if (defined($result->{"sensorState"}) )
       {
-        readingsBulkUpdate( $hash, 'RainSensorState', $result->{"sensorState"}, 1 );
+        readingsBulkUpdate($hash, 'RainSensorState', $result->{"sensorState"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetRainSensorState($name) - GetRainSensorState callback");
       $callback->();
@@ -2617,20 +2620,20 @@ sub RainbirdController_GetRainSensorBypass($;$)
     
     Log3($name, 4, "RainbirdController_GetRainSensorBypass($name) - GetRainSensorBypass lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"bypass"}) )
+      if (defined($result->{"bypass"}) )
       {
-        readingsBulkUpdate( $hash, 'RainSensorBypass', $result->{"bypass"}, 1 );
+        readingsBulkUpdate($hash, 'RainSensorBypass', $result->{"bypass"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetRainSensorBypass($name) - GetRainSensorBypass callback");
       $callback->();
@@ -2672,11 +2675,11 @@ sub RainbirdController_SetRainSensorBypass($$;$)
     
     Log3($name, 4, "RainbirdController_SetRainSensorBypass($name) - SetRainSensorBypass lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading activeStations
@@ -2706,11 +2709,11 @@ sub RainbirdController_ZoneIrrigate($$$;$)
     
     Log3($name, 4, "RainbirdController_ZoneIrrigate($name) - ZoneIrrigate[$zone] lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading activeStations
@@ -2740,11 +2743,11 @@ sub RainbirdController_ZoneGetSchedule($$;$)
     
     Log3($name, 4, "RainbirdController_ZoneGetSchedule($name) - ZoneGetSchedule[$zone] lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
 
       # "A0" => {"length" =>  4, "type" => "GetScheduleResponse", 
       #     "zoneId"           => {"position" =>  2, "length" => 4}, 
@@ -2778,7 +2781,7 @@ sub RainbirdController_ZoneGetSchedule($$;$)
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_ZoneGetSchedule($name) - ZoneGetSchedule[$zone] callback");
       $callback->();
@@ -2822,11 +2825,11 @@ sub RainbirdController_ZoneSetScheduleRAW($$;$)
     
     Log3($name, 4, "RainbirdController_ZoneSetScheduleRAW($name) - ZoneSetSchedule[$zone] lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
     
     RainbirdController_ZoneGetSchedule($hash, $zone, $callback);
@@ -2855,15 +2858,15 @@ sub RainbirdController_ZoneTest($$;$)
     
     Log3($name, 4, "RainbirdController_ZoneTest($name) - ZoneTest[$zone] lambda");
 
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_ZoneTest($name) - ZoneTest[$zone] callback");
       $callback->();
@@ -2893,11 +2896,11 @@ sub RainbirdController_SetProgram($$;$)
     
     Log3($name, 4, "RainbirdController_SetProgram($name) - SetProgram lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading activeStations
@@ -2927,11 +2930,11 @@ sub RainbirdController_StopIrrigation($;$)
     
     Log3($name, 4, "RainbirdController_StopIrrigation($name) - StopIrrigation lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # update reading activeStations
@@ -2961,15 +2964,15 @@ sub RainbirdController_FactoryReset($;$)
     
     Log3($name, 4, "RainbirdController_FactoryReset($name) - FactoryReset lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_FactoryReset($name) - FactoryReset callback");
       $callback->();
@@ -3010,52 +3013,52 @@ sub RainbirdController_GetWifiParams($;$)
     
     Log3($name, 4, "RainbirdController_GetWifiParams($name) - GetWifiParams lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"macAddress"}) )
+      if (defined($result->{"macAddress"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_MacAddress', $result->{"macAddress"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_MacAddress', $result->{"macAddress"}, 1 );
       }
-      if( defined($result->{"localIpAddress"}) )
+      if (defined($result->{"localIpAddress"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_IpAddress', $result->{"localIpAddress"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_IpAddress', $result->{"localIpAddress"}, 1 );
       }
-      if( defined($result->{"localNetmask"}) )
+      if (defined($result->{"localNetmask"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_Netmask', $result->{"localNetmask"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_Netmask', $result->{"localNetmask"}, 1 );
       }
-      if( defined($result->{"localGateway"}) )
+      if (defined($result->{"localGateway"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_Gateway', $result->{"localGateway"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_Gateway', $result->{"localGateway"}, 1 );
       }
-      if( defined($result->{"rssi"}) )
+      if (defined($result->{"rssi"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_rssi', $result->{"rssi"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_rssi', $result->{"rssi"}, 1 );
       }
-      if( defined($result->{"wifiSecurity"}) )
+      if (defined($result->{"wifiSecurity"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_Security', $result->{"wifiSecurity"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_Security', $result->{"wifiSecurity"}, 1 );
       }
-      if( defined($result->{"apTimeoutNoLan"}) )
+      if (defined($result->{"apTimeoutNoLan"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_ApTimeoutNoLan', $result->{"apTimeoutNoLan"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_ApTimeoutNoLan', $result->{"apTimeoutNoLan"}, 1 );
       }
-      if( defined($result->{"apTimeoutIdle"}) )
+      if (defined($result->{"apTimeoutIdle"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_ApTimeoutIdle', $result->{"apTimeoutIdle"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_ApTimeoutIdle', $result->{"apTimeoutIdle"}, 1 );
       }
-      if( defined($result->{"stickVersion"}) )
+      if (defined($result->{"stickVersion"}) )
       {
-        readingsBulkUpdate( $hash, 'Wifi_StickVersion', $result->{"stickVersion"}, 1 );
+        readingsBulkUpdate($hash, 'Wifi_StickVersion', $result->{"stickVersion"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetWifiParams($name) - GetWifiParams callback");
       $callback->();
@@ -3095,24 +3098,24 @@ sub RainbirdController_GetNetworkStatus($;$)
     
     Log3($name, 4, "RainbirdController_GetNetworkStatus($name) - GetNetworkStatus lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"networkUp"}) )
+      if (defined($result->{"networkUp"}) )
       {
-        readingsBulkUpdate( $hash, 'NetworkUp', $result->{"networkUp"}, 1 );
+        readingsBulkUpdate($hash, 'NetworkUp', $result->{"networkUp"}, 1 );
       }
-      if( defined($result->{"internetUp"}) )
+      if (defined($result->{"internetUp"}) )
       {
-        readingsBulkUpdate( $hash, 'InternetUp', $result->{"internetUp"}, 1 );
+        readingsBulkUpdate($hash, 'InternetUp', $result->{"internetUp"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetNetworkStatus($name) - GetNetworkStatus callback");
       $callback->();
@@ -3158,36 +3161,36 @@ sub RainbirdController_GetSettings($;$)
     
     Log3($name, 4, "RainbirdController_GetSettings($name) - GetSettings lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      if( defined($result->{"country"}) )
+      if (defined($result->{"country"}) )
       {
-        readingsBulkUpdate( $hash, 'SettingCountry', $result->{"country"}, 1 );
+        readingsBulkUpdate($hash, 'SettingCountry', $result->{"country"}, 1 );
       }
-      if( defined($result->{"code"}) )
+      if (defined($result->{"code"}) )
       {
-        readingsBulkUpdate( $hash, 'SettingCode', $result->{"code"}, 1 );
+        readingsBulkUpdate($hash, 'SettingCode', $result->{"code"}, 1 );
       }
-      if( defined($result->{"globalDisable"}) )
+      if (defined($result->{"globalDisable"}) )
       {
-        readingsBulkUpdate( $hash, 'SettingGlobalDisable', $result->{"globalDisable"}, 1 );
+        readingsBulkUpdate($hash, 'SettingGlobalDisable', $result->{"globalDisable"}, 1 );
       }
-      if( defined($result->{"numPrograms"}) )
+      if (defined($result->{"numPrograms"}) )
       {
-        readingsBulkUpdate( $hash, 'SettingNumPrograms', $result->{"numPrograms"}, 1 );
+        readingsBulkUpdate($hash, 'SettingNumPrograms', $result->{"numPrograms"}, 1 );
       }
-      if( defined($result->{"programOptOutMask"}) )
+      if (defined($result->{"programOptOutMask"}) )
       {
-        readingsBulkUpdate( $hash, 'SettingProgramOptOutMask', $result->{"programOptOutMask"}, 1 );
+        readingsBulkUpdate($hash, 'SettingProgramOptOutMask', $result->{"programOptOutMask"}, 1 );
       }
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_GetSettings($name) - GetSettings callback");
       $callback->();
@@ -3215,17 +3218,17 @@ sub RainbirdController_TestCMD($$$;$)
     
     Log3($name, 4, "RainbirdController_TestCMD($name) - TestCMD lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-      readingsBulkUpdate( $hash, 'testCMDResult', encode_json($result), 1 );
+      readingsBulkUpdate($hash, 'testCMDResult', encode_json($result), 1 );
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_TestCMD($name) - TestCMD callback");
       $callback->();
@@ -3253,19 +3256,19 @@ sub RainbirdController_TestRAW($$;$)
     
     Log3($name, 4, "RainbirdController_TestRAW($name) - TestRAW lambda");
     
-    if( defined($result) )
+    if (defined($result) )
     {
       readingsBeginUpdate($hash);
 
-#      readingsBulkUpdate( $hash, 'testRAWSend', encode_json(decode_json($sendData)), 1 );
-      readingsBulkUpdate( $hash, 'testRAWSend', JSON->new->canonical(1)->pretty->encode(decode_json($sendData)), 1 );
-      readingsBulkUpdate( $hash, 'testRAWResult',  JSON->new->canonical(1)->pretty->encode($result), 1 );
+#      readingsBulkUpdate($hash, 'testRAWSend', encode_json(decode_json($sendData)), 1 );
+      readingsBulkUpdate($hash, 'testRAWSend', JSON->new->canonical(1)->pretty->encode(decode_json($sendData)), 1 );
+      readingsBulkUpdate($hash, 'testRAWResult',  JSON->new->canonical(1)->pretty->encode($result), 1 );
 
-      readingsEndUpdate( $hash, 1 );
+      readingsEndUpdate($hash, 1);
     }
 
     # if there is a callback then call it
-    if( defined($callback) )
+    if (defined($callback) )
     {
       Log3($name, 4, "RainbirdController_TestRAW($name) - TestRAW callback");
       $callback->();
@@ -3397,7 +3400,9 @@ sub RainbirdController_Command($$$@)
       my $cmdKey = $CMDSUPPORTPREFIX . $commandString . $CMDSUPPORTPOSTFIX;
 
       ### check if support of command was checked before
-      if (not defined($hash->{helper}{CMD}{$cmdKey}))
+      if (not defined($hash->{helper}{CMD}{$cmdKey}) or
+        ($hash->{helper}{CheckCommandSupport} eq "1" and
+        $hash->{helper}{CMD}{$cmdKey} eq $NotCheckedValue))
       {
         ### callback - this function have to be recalled
         my $commandCallback = sub { RainbirdController_Command($hash, $resultCallback, $command, @args); };
@@ -3646,7 +3651,7 @@ sub RainbirdController_ErrorHandling($$$)
   {
     Log3($name, 3, "RainbirdController_ErrorHandling($name) - ErrorHandling[ID:$request_id]: Code: " . $param->{code} . " data: \"" . $data . "\"");
     
-    if( $param->{code} == 403) ### Forbidden
+    if ($param->{code} == 403) ### Forbidden
     {
       $errorMsg = "wrong password";
       $leftRetries = 0; # no retry
@@ -3721,7 +3726,7 @@ sub RainbirdController_ErrorHandling($$$)
     $hash->{helper}{ResponseCount_Error}++;
     RainbirdController_UpdateInternals($hash);
 
-    readingsSingleUpdate( $hash, 'state', $errorMsg, 1 );
+    readingsSingleUpdate($hash, "state", $errorMsg, 1 );
     return;
   }
   
@@ -3770,6 +3775,7 @@ sub RainbirdController_ResponseProcessing($$)
   if($hash->{helper}{DEBUG} ne "0")
   {
     $hash->{helper}{Dbg}{"Cmd_" . $command . "_RES"} = $decrypted_data;
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_Count"}++;
     RainbirdController_UpdateInternals($hash);
   }
 
@@ -3844,7 +3850,7 @@ sub RainbirdController_ResponseProcessing($$)
     if(defined($expectedResponse_id) and
       $response_id ne $expectedResponse_id)  
     {
-      if( $response_id eq "00" )
+      if ($response_id eq "00" )
       {
         Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"");
       }
@@ -4047,14 +4053,14 @@ sub RainbirdController_DecodeData($$)
   # find response-structure in hash "ControllerResponses"
   my $responseHash = $ControllerResponses{$response_id};
   
-  if( not defined( $responseHash ) )
+  if (not defined( $responseHash ) )
   {
     Log3($name, 2, "RainbirdController_DecodeData($name) - decode: ControllerResponse \"" . $response_id . "\" not found!");
   }
   else
   {
     my $cmd_template = $responseHash->{$responseDataLength};
-    if( not defined( $cmd_template ) )
+    if (not defined( $cmd_template ) )
     {
       Log3($name, 2, "RainbirdController_DecodeData($name) - decode: ControllerResponse \"" . $response_id . "\" with length \"" . $responseDataLength . "\"not found!");
     }
