@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.6";
+my $VERSION = "2.0.7";
 
 use strict;
 use warnings;
@@ -554,7 +554,18 @@ my $DefaultRetries        = 2;  # default number of retries
 
 ### hash with all known models
 my %KnownModels = (
-  3 => "ESP-RZXe Serie",
+  0x003 => ["ESP-RZXe Serie", 0,  "ESP-RZXe",   0, 0, 6],
+  0x007 => ["ESP_ME",         1,  "ESP-Me",     1, 4, 6],
+  0x006 => ["ST8X_WF",        2,  "ST8x-WiFi",  0, 0, 6],
+  0x005 => ["ESP_TM2",        3,  "ESP-TM2",    1, 3, 4],
+  0x008 => ["ST8X_WF2",       4,  "ST8x-WiFi2", 1, 8, 6],
+  0x009 => ["ESP_ME3",        5,  "ESP-ME3",    1, 4 ,6],
+  0x010 => ["MOCK_ESP_ME2",   6,  "ESP=Me2",    1, 4, 6],
+  0x00A => ["ESP_TM2v2",      7,  "ESP-TM2",    1, 3 ,4],
+  0x10A => ["ESP_TM2v3",      8,  "ESP-TM2",    1, 3, 4],
+  0x099 => ["TBOS_BT",        9,  "TBOS-BT",    1, 3, 8],
+  0x107 => ["ESP_MEv2",       10, "ESP-Me",     1, 4, 6],
+  0x103 => ["ESP_RZXe2",      11, "ESP-RZXe2",  1, 8, 6],
 );
 
 my $DebugMarker               = "Dbg";
@@ -564,15 +575,14 @@ my $TimerLoopIdentifier       = "Loop";
 my $TimerRetryIdentifier      = "Retry";
 my $NotCheckedValue           = "not checked yet";
 
+my $DEFAULT_PAGE              = 0;
+my $BLOCK_SIZE                = 16;
+my $INTERRUPT                 = "\x00";
+my $PAD                       = "\x10";
 
-my $DEFAULT_PAGE = 0;
-my $BLOCK_SIZE = 16;
-my $INTERRUPT = "\x00";
-my $PAD = "\x10";
-
-my $CMDSUPPORTPREFIX    = "Cmd_"; # hide with prefix "."
-my $CMDSUPPORTPOSTFIX   = "_Support"; # hide with prefix "."
-my $CMDSUPPORT_3F =  $CMDSUPPORTPREFIX . '3F' . $CMDSUPPORTPOSTFIX;
+my $CMDSUPPORTPREFIX          = "Cmd_"; # hide with prefix "."
+my $CMDSUPPORTPOSTFIX         = "_Support"; # hide with prefix "."
+my $CMDSUPPORT_3F             =  $CMDSUPPORTPREFIX . '3F' . $CMDSUPPORTPOSTFIX;
 
 ### HTML hedaer
 my $HEAD = 
@@ -1840,20 +1850,23 @@ sub RainbirdController_GetModelAndVersion($;$)
       if (defined($result->{"modelID"}) )
       {
         my $modelId = $result->{"modelID"};
+
+        $hash->{ModelID} = $modelId;
         
-        $hash->{MODELID} = $modelId;
-        
-        my $model = $KnownModels{$modelId};
+        my $model = $KnownModels{$modelId}[0];
 
         ### set known model name
         if (defined($model) )
         {
-          $hash->{MODEL} = $model;
+          $hash->{Model} = $model;
         }
         else
         {
-          $hash->{MODEL} = "unknown";
+          $hash->{Model} = "unknown";
         }
+
+        $hash->{Model_RevisionMajor} = $result->{"protocolRevisionMajor"};
+        $hash->{Model_RevisionMinor} = $result->{"protocolRevisionMinor"};
       }
 
       if (defined($result->{"protocolRevisionMajor"}) )
