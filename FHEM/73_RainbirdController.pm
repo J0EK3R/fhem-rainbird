@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.0.7";
+my $VERSION = "2.1.0";
 
 use strict;
 use warnings;
@@ -41,7 +41,7 @@ eval {use JSON;1 or $missingModul .= "JSON "};
 eval {use Digest::SHA qw(sha256);1 or $missingModul .= "Digest::SHA "};
 #eval {use Digest::MD5;1 or $missingModul .= "Digest::MD5 "};
 eval {use Crypt::CBC;1 or $missingModul .= "Crypt::CBC "};
-eval {use Crypt::Mode::CBC;1 or $missingModul .= "Crypt::Mode::CBC "};
+#eval {use Crypt::Mode::CBC;1 or $missingModul .= "Crypt::Mode::CBC "};
 
 #####################################
 # Forward declarations
@@ -123,8 +123,8 @@ sub RainbirdController_ResponseProcessing($$);
 sub RainbirdController_EncodeData($$@);
 sub RainbirdController_DecodeData($$);
 sub RainbirdController_AddPadding($$);
-sub RainbirdController_EncryptData($$$);
-sub RainbirdController_DecryptData($$$);
+sub RainbirdController_EncryptData($$$;$);
+sub RainbirdController_DecryptData($$$;$);
 
 ### password
 sub RainbirdController_StorePassword($$);
@@ -276,6 +276,9 @@ my %ControllerCommands = (
     "parameter2" => {"length" => 2},
     "parameter3" => {"length" => 2},
     "parameter4" => {"length" => 2}},
+  ### "AlternateBitRateSupportRequest" "09"
+  ### "ControllerFirmwareVersionRequest" "0B"
+  ### "UniversalMessageRequest" "0C"
   "CurrentTimeGetRequest" => {"method" => "tunnelSip", "command" => "10", "response" => "90", "length" => 1},
   "CurrentTimeSetRequest" => {"method" => "tunnelSip", "command" => "11", "response" => "01", "length" => 4, 
     "parameter1" => {"length" => 2},
@@ -326,6 +329,7 @@ my %ControllerCommands = (
   # not supported
   "ZonesSeasonalAdjustFactorRequest" => {"method" => "tunnelSip", "command" => "32", "response" => "B2", "length" => 2,  
     "parameter1" => {"length" => 2}}, 
+  ### "ZonesSeasonalAdjustFactorSet" "33"
   "RainDelayGetRequest" => {"method" => "tunnelSip", "command" => "36", "response" => "B6", "length" => 1},
   "RainDelaySetRequest" => {"method" => "tunnelSip", "command" => "37", "response" => "01", "length" => 3, 
     "parameter1" => {"length" => 4}},
@@ -339,8 +343,8 @@ my %ControllerCommands = (
     "parameter1" => {"length" => 2}},
   "GetIrrigationStateRequest" => {"method" => "tunnelSip", "command" => "3B", "response" => "BB", "length" => 2,
     "parameter1" => {"length" => 2}},
-  ### still unknown
-  "Unknown3DRequest" => {"method" => "tunnelSip", "command" => "3D", "response" => "DB", "length" => 2,
+  ### ("CurrentStationErrorRequest", "3D", true)
+  "CurrentStationErrorRequest" => {"method" => "tunnelSip", "command" => "3D", "response" => "DB", "length" => 2,
     "parameter1" => {"length" => 2}},
   "CurrentRainSensorStateRequest" => {"method" => "tunnelSip", "command" => "3E", "response" => "BE", "length" => 1},
   "CurrentStationsActiveRequest" => {"method" => "tunnelSip", "command" => "3F", "response" => "BF", "length" => 2, 
@@ -366,6 +370,7 @@ my %ControllerCommands = (
     "parameter3" => {"length" => 1}}, 
   # not supported
   "CombinedControllerStateRequest" => {"method" => "tunnelSip", "command" => "4C", "response" => "CC","length" => 1 },
+  ### "IrrigationStatisticsRequest" "4D"
   ### still unknown
   "Unknown50Request" => {"method" => "tunnelSip", "command" => "50", "response" => "01", "length" => 1},
   ### still unknown
@@ -373,6 +378,13 @@ my %ControllerCommands = (
   ### still unknown
   "Unknown52Request" => {"method" => "tunnelSip", "command" => "52", "response" => "01", "length" => 1},
   "FactoryResetRequest" => {"method" => "tunnelSip", "command" => "57", "response" => "01", "length" => 1},
+   ### "StartLearnFlowSequenceRequest" "60"
+   ### "CancelLearnFlowSequenceRequest" "61"
+   ### "LearnFlowSequenceStatusRequest" "62"
+   ### "FlowMonitorStatusRequest" "63"
+   ### "FlowMonitorStatusSetRequest" "64"
+   ### "FlowMonitorRateRequest" "65"
+   ### "LogEntriesRequest" "70"
 );
 
 ### format of a response entry
@@ -478,6 +490,8 @@ my %ControllerResponses = (
   "86" => {18 => {"type" => "Unknown06Response", 
     "result1" => {"position" => 2, "length" => 8, "format" => "%X"}, 
     "result2" => {"position" => 10, "length" => 8, "format" => "%X"} } },
+  ### "ControllerFirmwareVersionResponse" "8B"
+  ### "UniversalMessageTransportResponse" "8C"
   "90" => {8 => {"type" => "CurrentTimeGetResponse", 
     "hour" => {"position" => 2, "length" => 2}, 
     "minute" => {"position" => 4, "length" => 2}, 
@@ -544,6 +558,13 @@ my %ControllerResponses = (
     "seasonalAdjust" => {"position" => 22, "length" => 4}, 
     "remainingRuntime" => {"position" => 26, "length" => 4}, 
     "activeStation" => {"position" => 30, "length" => 2} } }
+    ### "IrrigationStatisticsResponse" "CD"
+    ### "StartLearnFlowSequenceResponse" "E0"
+    ### "CancelLearnFlowSequenceResponse" "E0"
+    ### "LearnFlowSequenceStatusResponse" "E2"
+    ### "FlowMonitorStatusResponse" "E3"
+    ### "FlowMonitorStatusSetResponse" "64"
+    ### "FlowMonitorRateResponse" "E5"
 );
 
 ### constants
@@ -554,18 +575,19 @@ my $DefaultRetries        = 2;  # default number of retries
 
 ### hash with all known models
 my %KnownModels = (
-  0x003 => ["ESP-RZXe Serie", 0,  "ESP-RZXe",   0, 0, 6],
-  0x007 => ["ESP_ME",         1,  "ESP-Me",     1, 4, 6],
-  0x006 => ["ST8X_WF",        2,  "ST8x-WiFi",  0, 0, 6],
-  0x005 => ["ESP_TM2",        3,  "ESP-TM2",    1, 3, 4],
-  0x008 => ["ST8X_WF2",       4,  "ST8x-WiFi2", 1, 8, 6],
-  0x009 => ["ESP_ME3",        5,  "ESP-ME3",    1, 4 ,6],
-  0x010 => ["MOCK_ESP_ME2",   6,  "ESP=Me2",    1, 4, 6],
-  0x00A => ["ESP_TM2v2",      7,  "ESP-TM2",    1, 3 ,4],
-  0x10A => ["ESP_TM2v3",      8,  "ESP-TM2",    1, 3, 4],
-  0x099 => ["TBOS_BT",        9,  "TBOS-BT",    1, 3, 8],
-  0x107 => ["ESP_MEv2",       10, "ESP-Me",     1, 4, 6],
-  0x103 => ["ESP_RZXe2",      11, "ESP-RZXe2",  1, 8, 6],
+  0x0003 => ["ESP-RZXe",      "ESP-RZXe",   0, 0, 6],
+  0x0007 => ["ESP_ME",        "ESP-Me",     1, 4, 6],
+  0x0006 => ["ST8X_WF",       "ST8x-WiFi",  0, 0, 6],
+  0x0005 => ["ESP_TM2",       "ESP-TM2",    1, 3, 4],
+  0x0008 => ["ST8X_WF2",      "ST8x-WiFi2", 1, 8, 6],
+  0x0009 => ["ESP_ME3",       "ESP-ME3",    1, 4 ,6],
+  0x0010 => ["MOCK_ESP_ME2",  "ESP=Me2",    1, 4, 6],
+  0x000A => ["ESP_TM2v2",     "ESP-TM2",    1, 3 ,4],
+  0x010A => ["ESP_TM2v3",     "ESP-TM2",    1, 3, 4],
+  0x0099 => ["TBOS_BT",       "TBOS-BT",    1, 3, 8],
+  0x0100 => ["TBOS_BT",       "TBOS-BT",    1, 3, 8],
+  0x0107 => ["ESP_MEv2",      "ESP-Me",     1, 4, 6],
+  0x0103 => ["ESP_RZXe2",     "ESP-RZXe2",  1, 8, 6],
 );
 
 my $DebugMarker               = "Dbg";
@@ -1483,8 +1505,6 @@ sub RainbirdController_Get($@)
   {
     return "please set password first"
       if (not defined($hash->{helper}{Password}));
-
-    readingsBeginUpdate($hash);
     
     ### byte[] arrOutput = { 0x2A, 0xD5, 0x4B, 0xE0, 0x84, 0x83, 0xFC, 0x71, 0x31, 0x4D, 0xB3, 0x29, 0x18, 0xF1, 0xEE, 0xDB, 0x8F, 0xE5, 0xD7, 0xFF, 0x21, 0xBA, 0x9D, 0x78, 0x08, 0x05, 0xD9, 0x99, 0x56, 0x81, 0x86, 0x5E, 0x98, 0xC3, 0x6B, 0xCD, 0x4A, 0x10, 0xF8, 0xE9, 0xDF, 0x49, 0x21, 0x73, 0x4D, 0x09, 0xF6, 0x90, 0x91, 0x06, 0x3A, 0xE8, 0xB2, 0x43, 0x9E, 0xEA, 0x31, 0x8A, 0x1D, 0x5C, 0x44, 0x98, 0xEA, 0x06, 0xD7, 0x1D, 0xBE, 0xED, 0xBC, 0x23, 0xF9, 0x35, 0x3C, 0x06, 0xD7, 0xAC, 0x5A, 0xBD, 0x47, 0xA2, 0x01, 0xFF, 0x2A, 0x90, 0xA1, 0x51, 0x22, 0x44, 0x98, 0xB8, 0x21, 0xB7, 0xC6, 0xC8, 0x67, 0x90, 0xAA, 0x41, 0xBB, 0x90, 0xE2, 0x6C, 0x9C, 0xDE, 0x1A, 0x3D, 0x90, 0x56, 0xDA, 0x94, 0x3B, 0xF3, 0x35, 0x18, 0x7A, 0x87, 0x64, 0x05, 0x7E, 0xDE, 0xE4, 0x27, 0xC4, 0x87, 0xC9, 0x4B, 0xFC, 0x6B, 0x56, 0x3A, 0x5D, 0x6B, 0x96, 0x3B, 0x84, 0xE7, 0x37, 0xBD, 0xF4, 0xB4, 0x2A, 0x62, 0x99, 0x5C };
     ### args like 2A D5 4B E0 84 83 FC 71 31 4D B3 29 18 F1 EE DB 8F E5 D7 FF 21 BA 9D 78 08 05 D9 99 56 81 86 5E 98 C3 6B CD 4A 10 F8 E9 DF 49 21 73 4D 09 F6 90 91 06 3A E8 B2 43 9E EA 31 8A 1D 5C 44 98 EA 06 D7 1D BE ED BC 23 F9 35 3C 06 D7 AC 5A BD 47 A2 01 FF 2A 90 A1 51 22 44 98 B8 21 B7 C6 C8 67 90 AA 41 BB 90 E2 6C 9C DE 1A 3D 90 56 DA 94 3B F3 35 18 7A 87 64 05 7E DE E4 27 C4 87 C9 4B FC 6B 56 3A 5D 6B 96 3B 84 E7 37 BD F4 B4 2A 62 99 5C
@@ -1524,21 +1544,19 @@ sub RainbirdController_Get($@)
 
     if(not defined($password))
     {
-      readingsBulkUpdate($hash, "decryptedData", "password not defined", 1 );
+      asyncOutput($hash->{CL}, "password not defined");
     }
     
-    my $decryptedData = eval { RainbirdController_DecryptData($hash, $bytearray, $password) };
+    my $decryptedData = eval { RainbirdController_DecryptData($hash, $bytearray, $password, "DecryptHEX") };
   
     if ($@)
     {
-      readingsBulkUpdate($hash, "decryptedData", $@, 1 );
+      asyncOutput($hash->{CL}, $@);
     }
     else
-    {  
-      readingsBulkUpdate($hash, "decryptedData", $decryptedData, 1 );
+    {
+      asyncOutput($hash->{CL}, $decryptedData);
     }
-
-    readingsEndUpdate($hash, 1);
   } 
   
   ### else
@@ -3547,19 +3565,24 @@ sub RainbirdController_Request($$$$$$)
     
     my $send_data = '{"id":' . $request_id . ',"jsonrpc":"2.0","method":"' . $dataMethod . '","params": {' . $parameters . '}}';
 
-    if($hash->{helper}{DEBUG} ne "0")
-    {
-      $hash->{helper}{Dbg}{"Cmd_" . $command . "_REQ"} = $send_data;
-      RainbirdController_UpdateInternals($hash);
-    }
-
     Log3($name, 5, "RainbirdController_Request($name) - Request[ID:$request_id] send_data: $send_data");
 
     ### encrypt data
-    my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, $password);
+    my $encrypt_data = RainbirdController_EncryptData($hash, $send_data, $password, $command);
+
+    if($hash->{helper}{DEBUG} ne "0")
+    {
+      $hash->{helper}{Dbg}{"Cmd_" . $command . "_REQ"} = $send_data;
+      my $hexString = (sprintf("%v02X", $encrypt_data) =~ s/\.//rg);
+
+      my $room = "Rainbird";
+      $hash->{helper}{Dbg}{"Cmd_" . $command . "_REQC"} = $hexString;
+#      $hash->{helper}{Dbg}{"Cmd_" . $command . "_REQC"} = "<html><a href=\"/fhem?cmd." . $name . "=get " . $name . " DecryptHEX " . $hexString . "" . $FW_CSRF . "&XHR=1\">" . $hexString . "</a></html>";
+      RainbirdController_UpdateInternals($hash);
+    }
 
     if(defined($encrypt_data))
-    {  
+    {
       my $param = {};
       $param->{hash}                = $hash;
       
@@ -3778,7 +3801,7 @@ sub RainbirdController_ResponseProcessing($$)
   }
 
   ### decrypt data
-  my $decrypted_data = RainbirdController_DecryptData($hash, $data, $password);
+  my $decrypted_data = RainbirdController_DecryptData($hash, $data, $password, $command);
   if(not defined($decrypted_data))
   {
     Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: encrypted_data not defined");
@@ -3787,6 +3810,7 @@ sub RainbirdController_ResponseProcessing($$)
 
   if($hash->{helper}{DEBUG} ne "0")
   {
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_RESC"} = (sprintf("%v02X", $data) =~ s/\.//rg);;
     $hash->{helper}{Dbg}{"Cmd_" . $command . "_RES"} = $decrypted_data;
     $hash->{helper}{Dbg}{"Cmd_" . $command . "_Count"}++;
     RainbirdController_UpdateInternals($hash);
@@ -4184,10 +4208,12 @@ sub RainbirdController_AddPadding($$)
 #####################################
 # EncryptData
 #####################################
-sub RainbirdController_EncryptData($$$)
+sub RainbirdController_EncryptData($$$;$)
 {
-  my ( $hash, $data, $encryptkey ) = @_;
+  my ($hash, $data, $encryptkey, $command ) = @_;
   my $name = $hash->{NAME};
+  
+  $command = "UKN" if not defined($command);
   
   my $tocodedata = $data . "\x00\x10";
   
@@ -4206,22 +4232,32 @@ sub RainbirdController_EncryptData($$$)
   my $b2 = sha256($data);
   Log3($name, 5, "RainbirdController_EncryptData($name) - encrypt: b2: \"" . (sprintf("%v02X", $b2) =~ s/\.//rg) . "\" length: " . length($b2));
   
-  #my $cbc = Crypt::CBC->new({'key' => $b,
-  #                           'cipher' => 'Cipher::AES',
-  #                           'iv' => $iv,
-  #                           'regenerate_key' => 0,
-  #                           'padding' => 'standard',
-  #                           'prepend_iv' => 0
-  #                            });
-  #  
-  #my $encrypteddata = $cbc->encrypt($c); 
-
-  my $cbc = Crypt::Mode::CBC->new('AES');
-  my $encrypteddata = $cbc->encrypt($c, $b, $iv); 
-  
+#  my $cbc = Crypt::Mode::CBC->new('AES');
+#  my $encrypteddata = $cbc->encrypt($c, $b, $iv); 
+  my $cbc = Crypt::CBC->new({
+    'key' => $b,
+    'cipher' => 'Cipher::AES',
+    'iv' => $iv,
+    'regenerate_key' => 0,
+    'padding' => 'standard',
+    'prepend_iv' => 0
+  });
+    
+  my $encrypteddata = $cbc->encrypt($c); 
   my $result = $b2 . $iv . $encrypteddata;
+
   Log3($name, 5, "RainbirdController_EncryptData($name) - encrypt: result: \"" . (sprintf("%v02X", $result) =~ s/\.//rg) . "\"");
   #Log3($name, 5, "RainbirdController_EncryptData($name) - encrypt: encrypteddata: \"$encrypteddata\"");
+
+  if($hash->{helper}{DEBUG} ne "0")
+  {
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_ENC_iv"} = (sprintf("%v02X", $iv) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_ENC_c"} = (sprintf("%v02X", $c) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_ENC_b"} = (sprintf("%v02X", $b) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_ENC_b2"} = (sprintf("%v02X", $b2) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_ENC"} = (sprintf("%v02X", $result) =~ s/\.//rg);
+    RainbirdController_UpdateInternals($hash);
+  }
 
   return $result;
 }
@@ -4229,10 +4265,12 @@ sub RainbirdController_EncryptData($$$)
 #####################################
 # DecryptData
 #####################################
-sub RainbirdController_DecryptData($$$)
+sub RainbirdController_DecryptData($$$;$)
 {
-  my ( $hash, $data, $decrypt_key ) = @_;
+  my ( $hash, $data, $decrypt_key, $command ) = @_;
   my $name = $hash->{NAME};
+
+  $command = "UKN" if not defined($command);
 
   my $symmetric_key = substr(sha256($decrypt_key), 0, 32);
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: symmetric_key: \"" . (sprintf("%v02X", $symmetric_key) =~ s/\.//rg) . "\"");
@@ -4243,18 +4281,18 @@ sub RainbirdController_DecryptData($$$)
   my $encrypted_data = substr($data, 48, length($data) - 48);
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: encrypted_data: \"" . (sprintf("%v02X", $encrypted_data) =~ s/\.//rg) . "\"");
 
-  #my $cbc = Crypt::CBC->new({'key' => $symmetric_key,
-  #                           'cipher' => 'Cipher::AES',
-  #                           'iv' => $iv,
-  #                           'regenerate_key' => 0,
-  #                           'padding' => 'standard',
-  #                           'prepend_iv' => 0
-  #                            });
-  #my $decrypteddata = $cbc->decrypt($encrypted_data); 
-
-  #my $cbc = Crypt::Mode::CBC->new('AES', 'standard');
-  my $cbc = Crypt::Mode::CBC->new('AES', 0);
-  my $decrypteddata = $cbc->decrypt($encrypted_data, $symmetric_key, $iv); 
+#  my $cbc = Crypt::Mode::CBC->new('AES', 0);
+#  my $decrypteddata = $cbc->decrypt($encrypted_data, $symmetric_key, $iv);
+ 
+  my $cbc = Crypt::CBC->new({
+    'key' => $symmetric_key,
+    'cipher' => 'Cipher::AES',
+    'iv' => $iv,
+    'regenerate_key' => 0,
+    'padding' => 'standard',
+    'prepend_iv' => 0
+  });
+  my $decrypteddata = $cbc->decrypt($encrypted_data); 
 
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"");
   #Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"");
@@ -4264,6 +4302,15 @@ sub RainbirdController_DecryptData($$$)
   $decrypteddata =~ s/\x00+$//;
   # Take 1 or more white spaces (\s+) till the end of the string ($), and replace them with an empty string. 
   $decrypteddata =~ s/\s+$//;
+
+  if($hash->{helper}{DEBUG} ne "0")
+  {
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_DEC_symmetric_key"} = (sprintf("%v02X", $symmetric_key) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_DEC_iv"} = (sprintf("%v02X", $iv) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_DEC_encrypted_data"} = (sprintf("%v02X", $encrypted_data) =~ s/\.//rg);
+    $hash->{helper}{Dbg}{"Cmd_" . $command . "_DEC"} = (sprintf("%v02X", $decrypteddata) =~ s/\.//rg);
+    RainbirdController_UpdateInternals($hash);
+  }
   
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"");
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: decrypteddata: \"" . $decrypteddata . "\"");
