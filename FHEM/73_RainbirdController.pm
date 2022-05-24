@@ -39,9 +39,7 @@ use warnings;
 my $missingModul = "";
 eval {use JSON;1 or $missingModul .= "JSON "};
 eval {use Digest::SHA qw(sha256);1 or $missingModul .= "Digest::SHA "};
-#eval {use Digest::MD5;1 or $missingModul .= "Digest::MD5 "};
 eval {use Crypt::CBC;1 or $missingModul .= "Crypt::CBC "};
-#eval {use Crypt::Mode::CBC;1 or $missingModul .= "Crypt::Mode::CBC "};
 
 #####################################
 # Forward declarations
