@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.1";
+my $VERSION = "2.1.2";
 
 use strict;
 use warnings;
@@ -610,7 +610,7 @@ my $HEAD =
     "Accept-Encoding: gzip, deflate\n" .
     "User-Agent: RainBird/2.0 CFNetwork/811.5.4 Darwin/16.7.0\n" .
     "Accept: */*\n" .
-#    "Connection: keep-alive\n" .
+    "Connection: keep-alive\n" .
     "Content-Type: application/octet-stream";
 
 #####################################
