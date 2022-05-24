@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.0";
+my $VERSION = "2.1.1";
 
 use strict;
 use warnings;
@@ -4233,15 +4233,24 @@ sub RainbirdController_EncryptData($$$;$)
   Log3($name, 5, "RainbirdController_EncryptData($name) - encrypt: b2: \"" . (sprintf("%v02X", $b2) =~ s/\.//rg) . "\" length: " . length($b2));
   
 #  my $cbc = Crypt::Mode::CBC->new('AES');
-#  my $encrypteddata = $cbc->encrypt($c, $b, $iv); 
-  my $cbc = Crypt::CBC->new({
-    'key' => $b,
-    'cipher' => 'Cipher::AES',
-    'iv' => $iv,
-    'regenerate_key' => 0,
-    'padding' => 'standard',
-    'prepend_iv' => 0
-  });
+#  my $encrypteddata = $cbc->encrypt($c, $b, $iv);
+
+  # https://metacpan.org/pod/Crypt::CBC 
+  my $cbc = Crypt::CBC->new(
+    -key => $b,                 # -pass,-key      The encryption/decryption passphrase.
+    -pass => $b,
+
+    -cipher => 'Cipher::AES',
+    -iv => $iv,
+    -padding => 'standard',
+
+#    -regenerate_key => 0,      # -regenerate_key [deprecated; use -literal_key instead]
+    -literal_key => 1,          # -literal_key    [deprected, use -pbkdf=>'none']
+    -pbkdf => 'none',
+
+    -prepend_iv => 0,           # -prepend_iv [deprecated; use -header instead]
+    -header  => 'none'
+  );
     
   my $encrypteddata = $cbc->encrypt($c); 
   my $result = $b2 . $iv . $encrypteddata;
@@ -4284,14 +4293,22 @@ sub RainbirdController_DecryptData($$$;$)
 #  my $cbc = Crypt::Mode::CBC->new('AES', 0);
 #  my $decrypteddata = $cbc->decrypt($encrypted_data, $symmetric_key, $iv);
  
-  my $cbc = Crypt::CBC->new({
-    'key' => $symmetric_key,
-    'cipher' => 'Cipher::AES',
-    'iv' => $iv,
-    'regenerate_key' => 0,
-    'padding' => 'standard',
-    'prepend_iv' => 0
-  });
+ # https://metacpan.org/pod/Crypt::CBC
+  my $cbc = Crypt::CBC->new(
+    -key => $symmetric_key,     # -pass,-key      The encryption/decryption passphrase.
+    -pass => $symmetric_key,
+    
+    -cipher => 'Cipher::AES',
+    -iv => $iv,
+    -padding => 'standard',
+
+#    -regenerate_key => 0,      # -regenerate_key [deprecated; use -literal_key instead]
+    -literal_key => 1,          # -literal_key    [deprected, use -pbkdf=>'none']
+    -pbkdf => 'none',
+
+    -prepend_iv => 0,           # -prepend_iv [deprecated; use -header instead]
+    -header  => 'none'
+  );
   my $decrypteddata = $cbc->decrypt($encrypted_data); 
 
   Log3($name, 5, "RainbirdController_DecryptData($name) - decrypt: decrypteddata: \"" . (sprintf("%v02X", $decrypteddata) =~ s/\.//rg) . "\"");
