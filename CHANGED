@@ -1,3 +1,3 @@
 FHEM Rainbird last changes:
 2022-05-25
- - command-lenth as int not string
+ - more debugging infos
