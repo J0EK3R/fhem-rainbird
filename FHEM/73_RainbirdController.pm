@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.3";
+my $VERSION = "2.1.4";
 
 use strict;
 use warnings;
@@ -119,7 +119,7 @@ sub RainbirdController_ResponseProcessing($$);
 
 ### protocol handling
 sub RainbirdController_EncodeData($$@);
-sub RainbirdController_DecodeData($$);
+sub RainbirdController_DecodeData($$$);
 sub RainbirdController_AddPadding($$);
 sub RainbirdController_EncryptData($$$;$);
 sub RainbirdController_DecryptData($$$;$);
@@ -3794,7 +3794,7 @@ sub RainbirdController_ResponseProcessing($$)
   
   if(not defined($password))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: password not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: password not defined");
     return undef;
   }
 
@@ -3802,7 +3802,7 @@ sub RainbirdController_ResponseProcessing($$)
   my $decrypted_data = RainbirdController_DecryptData($hash, $data, $password, $command);
   if(not defined($decrypted_data))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: encrypted_data not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: encrypted_data not defined");
     return undef;
   }
 
@@ -3819,20 +3819,20 @@ sub RainbirdController_ResponseProcessing($$)
 
   if ($@)
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: JSON error while request: $@");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: JSON error while request: $@");
     return undef;
   }
   
   if(not defined( $decode_json ))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: no JSON result.data");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: no JSON result.data");
     return undef;
   }
   
   if(not defined( $decode_json->{id} or
     not defined( $decode_json->{result} )))
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: wrong JSON result.data");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: wrong JSON result.data");
     
     return undef;
   }
@@ -3840,7 +3840,7 @@ sub RainbirdController_ResponseProcessing($$)
   ### compare requestId with responseId
   if($request_id ne $decode_json->{id})
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: request failed with wrong ResponseId! RequestId \"" . $request_id . "\" but got ResponseId \"" . $decode_json->{id} . "\"");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: request failed with wrong ResponseId! RequestId \"" . $request_id . "\" but got ResponseId \"" . $decode_json->{id} . "\"");
     return undef;
   }
   
@@ -3859,16 +3859,16 @@ sub RainbirdController_ResponseProcessing($$)
     # }  
     if(not defined( $decode_json->{result}->{data} ))
     {
-      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: result data not defined Data:'$decrypted_data'");
+      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: result data not defined Data:'$decrypted_data'");
       return undef;
     }
     
     ### decode data
-    my $decoded = RainbirdController_DecodeData($hash, $decode_json->{result}->{data});
+    my $decoded = RainbirdController_DecodeData($hash, $command, $decode_json->{result}->{data});
   
     if(not defined($decoded))
     {
-      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: decoded not defined");
+      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: decoded not defined");
       return undef;
     }
 
@@ -3877,7 +3877,7 @@ sub RainbirdController_ResponseProcessing($$)
 
     if(not defined($response_id))
     {
-      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: response not defined");
+      Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: response not defined");
       return undef;
     }
 
@@ -3887,11 +3887,11 @@ sub RainbirdController_ResponseProcessing($$)
     {
       if ($response_id eq "00" )
       {
-        Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"");
+        Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"");
       }
       else
       {
-        Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"");
+        Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: Status request failed with wrong response! Requested \"" . $expectedResponse_id . "\" but got \"" . $response_id . "\"");
       }
 
       return undef;
@@ -3963,7 +3963,7 @@ sub RainbirdController_ResponseProcessing($$)
   ### not defined
   else
   {
-    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod ExpReId:$expectedResponse_id]: dataMethod \"$dataMethod\" not defined");
+    Log3($name, 2, "RainbirdController_ResponseProcessing($name) - ResponseProcessing[ID:$request_id M:$dataMethod C:$command ExpReId:$expectedResponse_id]: dataMethod \"$dataMethod\" not defined");
     return undef;
   }
 }
@@ -4067,12 +4067,12 @@ sub RainbirdController_EncodeData($$@)
 #####################################
 # DecodeData
 #####################################
-sub RainbirdController_DecodeData($$)
+sub RainbirdController_DecodeData($$$)
 {
-  my ( $hash, $data ) = @_;
+  my ( $hash, $command, $data ) = @_;
   my $name = $hash->{NAME};
   
-  Log3($name, 5, "RainbirdController_DecodeData($name) - decode: data \"" . $data . "\"");
+  Log3($name, 5, "RainbirdController_DecodeData($name) - Command: " . $command . " - Data: \"" . $data . "\"");
 
   my $response_id = substr($data, 0, 2);
   my $responseDataLength = length($data);
@@ -4090,14 +4090,14 @@ sub RainbirdController_DecodeData($$)
   
   if (not defined( $responseHash ) )
   {
-    Log3($name, 2, "RainbirdController_DecodeData($name) - decode: ControllerResponse \"" . $response_id . "\" not found!");
+    Log3($name, 2, "RainbirdController_DecodeData($name) - Command: " . $command . " - ControllerResponse \"" . $response_id . "\" not found! Data:\"" . $data . "\"");
   }
   else
   {
     my $cmd_template = $responseHash->{$responseDataLength};
     if (not defined( $cmd_template ) )
     {
-      Log3($name, 2, "RainbirdController_DecodeData($name) - decode: ControllerResponse \"" . $response_id . "\" with length \"" . $responseDataLength . "\"not found!");
+      Log3($name, 2, "RainbirdController_DecodeData($name) - Command: " . $command . " - ControllerResponse \"" . $response_id . "\" with length \"" . $responseDataLength . "\" not found! Data:\"" . $data . "\"");
     }
     else
     {
@@ -4136,11 +4136,11 @@ sub RainbirdController_DecodeData($$)
       
           if($position >= $responseDataLength)
           {
-            Log3($name, 3, "RainbirdController_DecodeData($name) - decode: [$key] string to small");
+            Log3($name, 3, "RainbirdController_DecodeData($name) - Command: " . $command . " - [$key] string to small");
           }
           elsif(($position + $length) > $responseDataLength)
           {
-            Log3($name, 3, "RainbirdController_DecodeData($name) - decode: [$key] string to small");
+            Log3($name, 3, "RainbirdController_DecodeData($name) - Command: " . $command . " - [$key] string to small");
           }
           else
           {
@@ -4171,7 +4171,7 @@ sub RainbirdController_DecodeData($$)
               $currentValue = sprintf($format, $currentValue);    
             }
 
-            Log3($name, 5, "RainbirdController_DecodeData($name) - decode: insert $key = " . $currentValue);
+            Log3($name, 5, "RainbirdController_DecodeData($name) - Command: " . $command . " - insert $key = " . $currentValue);
 
             $result{$key} = $currentValue;
           }

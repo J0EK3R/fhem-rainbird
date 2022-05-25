@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.3";
+my $VERSION = "2.1.4";
 
 use strict;
 use warnings;
@@ -610,7 +610,7 @@ sub RainbirdZone_ProcessMessage($$)
   my $type = $json_message->{"type"};
   if( not defined($type) )
   {
-    Log3($name, 3, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] response undefined");
+    Log3($name, 3, "RainbirdZone_ProcessMessage($name) - ProcessMessage[$zoneId] response undefined - \"" . encode_json($json_message) . "\"");
     return;
   }
   
