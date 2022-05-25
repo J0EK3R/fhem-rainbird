@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.2";
+my $VERSION = "2.1.3";
 
 use strict;
 use warnings;
@@ -3449,7 +3449,7 @@ sub RainbirdController_Command($$$@)
 
         if(defined($data))
         {
-          my $params = '"data":"' . $data . '", "length":"' . (length($data) / 2) . '"';
+          my $params = '"data":"' . $data . '", "length":' . (length($data) / 2) . '';
         
           ### send request to device 
           RainbirdController_Request($hash, $resultCallback, $command_set->{"response"}, $commandString . "_" . $command, $method, $params );
