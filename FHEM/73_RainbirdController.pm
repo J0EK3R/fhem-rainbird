@@ -31,7 +31,7 @@
 ### our packagename
 package main;
 
-my $VERSION = "2.1.5";
+my $VERSION = "2.1.6";
 
 use strict;
 use warnings;
@@ -3867,6 +3867,25 @@ sub RainbirdController_ErrorHandling($$$)
   ### no error: process response
   if ($errorMsg eq "")
   {
+    $decoded = RainbirdController_ResponseProcessing($param, $data);
+
+    if(not defined($decoded))
+    {
+      $errorMsg = "error undefined response";
+    }
+  }
+
+  ### no error: process response
+  if (defined($decoded))
+  {
+    my $decoded_String = encode_json($decoded);
+
+    if(defined($decoded_String) and
+      $hash->{helper}{Debug} ne "0")
+    {
+      $hash->{helper}{Dbg}{"Cmd_" . $command . "_RES_JSON"} = $decoded_String;
+    }
+
     my $retrystring = $ResponseCountSuccessRetry . ($hash->{RETRIES} - $leftRetries);
     $hash->{helper}{ResponseCount_Success}++;
     $hash->{helper}{ResponseTotalTimespan} += $requestResponse_timespan;
@@ -3874,15 +3893,12 @@ sub RainbirdController_ErrorHandling($$$)
     $hash->{helper}{$retrystring}++;
     RainbirdController_UpdateInternals($hash);
 
-    $decoded = RainbirdController_ResponseProcessing( $param, $data );
-
-    my $decoded_String = encode_json($decoded);
-
-    if(defined($decoded_String) and
-      $hash->{helper}{Debug} ne "0")
+    # is there a callback function?
+    if (defined($resultCallback))
     {
-      $hash->{helper}{Dbg}{"Cmd_" . $command . "_RES_JSON"} = $decoded_String;
-      RainbirdController_UpdateInternals($hash);
+      Log3($name, 4, "$logInfoString: calling lambda function");
+      
+      $resultCallback->($decoded, $sendData);
     }
   }
   ### error: retries left
@@ -3927,14 +3943,6 @@ sub RainbirdController_ErrorHandling($$$)
     readingsSingleUpdate($hash, "state", $errorMsg, 1 );
     return;
   }
-  
-  # is there a callback function?
-  if (defined($resultCallback))
-  {
-    Log3($name, 4, "$logInfoString: calling lambda function");
-    
-    $resultCallback->($decoded, $sendData);
-  }
 }
 
 #####################################
@@ -3965,6 +3973,7 @@ sub RainbirdController_ResponseProcessing($$)
 
   ### decrypt data
   my $decrypted_data = RainbirdController_DecryptData($hash, $data, $password, $command);
+
   if(not defined($decrypted_data))
   {
     Log3($name, 2, "$logInfoString: decrypted_data not defined");
@@ -3993,14 +4002,14 @@ sub RainbirdController_ResponseProcessing($$)
     return undef;
   }
   
-  if(not defined( $decode_json ))
+  if(not defined($decode_json))
   {
     Log3($name, 2, "$logInfoString: no JSON result.data");
     return undef;
   }
   
-  if(not defined( $decode_json->{id} or
-    not defined( $decode_json->{result} )))
+  if(not defined($decode_json->{id} or
+    not defined($decode_json->{result} )))
   {
     Log3($name, 2, "$logInfoString: wrong JSON result.data");
     return undef;
@@ -4026,7 +4035,7 @@ sub RainbirdController_ResponseProcessing($$)
     #   }, 
     #   "id": 666
     # }  
-    if(not defined( $decode_json->{result}->{data} ))
+    if(not defined($decode_json->{result}->{data}))
     {
       Log3($name, 2, "$logInfoString: result data not defined Data:\"$decrypted_data\"");
       return undef;
@@ -4056,7 +4065,7 @@ sub RainbirdController_ResponseProcessing($$)
     {
       if ($response_id eq "00" )
       {
-        Log3($name, 2, "$logInfoString: NAKCode \"" . sprintf("%X", $decoded->{"NAKCode"}) . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"");
+        Log3($name, 2, "$logInfoString: NAKCode \"" . $decoded->{"NAKCode"} . "\" commandEcho \"" . $decoded->{"commandEcho"} . "\"");
       }
       else
       {
@@ -4241,20 +4250,21 @@ sub RainbirdController_EncodeData($$@)
 sub RainbirdController_DecodeData($$$)
 {
   my ( $hash, $command, $data ) = @_;
-  my $name = $hash->{NAME};
+  my $name                = $hash->{NAME};
   
-  my $response_id = substr($data, 0, 2);
-  my $logInfoString = "RainbirdController_DecodeData($name) Cmd:$command($response_id)";
+  my $response_id         = substr($data, 0, 2);
+  my $responseDataLength  = length($data);
+
+  my $logInfoString       = "RainbirdController_DecodeData($name) Cmd:$command($response_id)";
 
   Log3($name, 5, "$logInfoString: Data: \"" . $data . "\"");
 
-  my $responseDataLength = length($data);
   
   my %result = (
-    "identifier" => "Rainbird",
-    "responseId" => $response_id,
-    "responseDataLength" => $responseDataLength,
-    "data" => $data,
+    "identifier"          => "Rainbird",
+    "responseId"          => $response_id,
+    "responseDataLength"  => $responseDataLength,
+    "data"                => $data,
   );
   
 
@@ -4268,7 +4278,8 @@ sub RainbirdController_DecodeData($$$)
   else
   {
     my $cmd_template = $responseHash->{$responseDataLength};
-    if (not defined( $cmd_template ) )
+    
+    if (not defined($cmd_template))
     {
       Log3($name, 2, "$logInfoString: ControllerResponse \"" . $response_id . "\" with length \"" . $responseDataLength . "\" not found! Data:\"" . $data . "\"");
     }
@@ -4304,8 +4315,8 @@ sub RainbirdController_DecodeData($$$)
           defined($value->{"position"}) and
           defined($value->{"length"}))
         {
-          my $position = $value->{"position"};
-          my $length = $value->{"length"};
+          my $position  = $value->{"position"};
+          my $length    = $value->{"length"};
       
           if($position >= $responseDataLength)
           {
@@ -4319,9 +4330,9 @@ sub RainbirdController_DecodeData($$$)
           {
             my $currentValue = hex(substr($data, $value->{"position"}, $value->{"length"}));
 
-            my $format = $value->{"format"};
+            my $format      = $value->{"format"};
             my $knownValues = $value->{"knownvalues"};
-            my $converter = $value->{"converter"};
+            my $converter   = $value->{"converter"};
 
             ### if converter is defined
             if(defined($converter))
@@ -4364,14 +4375,16 @@ sub RainbirdController_AddPadding($$)
   my ( $hash, $data ) = @_;
   my $name = $hash->{NAME};
 
-  my $new_Data = $data;
-  my $new_Data_len = length($new_Data);
-  my $remaining_len = $BLOCK_SIZE - $new_Data_len;
-  my $to_pad_len = $remaining_len % $BLOCK_SIZE;
-  my $pad_string = $PAD x $to_pad_len;
-  my $result = $new_Data . $pad_string;
+  my $logInfoString = "RainbirdController_AddPadding($name)";
 
-  Log3($name, 5, "RainbirdController_AddPadding($name) - add_padding: $result");
+  my $new_Data      = $data;
+  my $new_Data_len  = length($new_Data);
+  my $remaining_len = $BLOCK_SIZE - $new_Data_len;
+  my $to_pad_len    = $remaining_len % $BLOCK_SIZE;
+  my $pad_string    = $PAD x $to_pad_len;
+  my $result        = $new_Data . $pad_string;
+
+  Log3($name, 5, "$logInfoString - add_padding: $result");
   
   return $result;
 }
